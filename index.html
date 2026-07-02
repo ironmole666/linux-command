@@ -53,7 +53,12 @@
         .search-input {
             width: 100%; padding: 14px 20px 14px 44px; background: #0f172a; border: 2px solid #334155;
             border-radius: 10px; color: white; font-size: 1rem; transition: all 0.3s ease;
+            -webkit-appearance: none; appearance: none;
         }
+        .search-input::-webkit-search-decoration,
+        .search-input::-webkit-search-cancel-button,
+        .search-input::-webkit-search-results-button,
+        .search-input::-webkit-search-results-decoration { display: none; }
         .search-input:focus { outline: none; border-color: #0ea5e9; box-shadow: 0 0 0 3px rgba(14, 165, 233, 0.2); }
         
         .category-container {
@@ -461,7 +466,7 @@
                 </div>
                 <div class="stat-item sync-status admin-only" id="syncStatus" onclick="openSyncModal()" title="点击配置云同步"><span class="sync-dot disconnected" id="syncDot"></span><span id="syncStatusText">未连接</span><span style="margin-left:6px;cursor:pointer;opacity:0.6;transition:opacity 0.2s" onclick="event.stopPropagation();manualSync()" onmouseover="this.style.opacity=1" onmouseout="this.style.opacity=0.6" title="手动同步">⟳</span></div>
             </div>
-            <div class="search-wrapper"><input type="text" class="search-input" id="searchInput" placeholder="搜索命令、描述或标签（支持空格多词 + 模糊匹配）..." oninput="onSearchInput()" autocomplete="off">
+            <div class="search-wrapper"><input type="search" class="search-input" id="searchInput" placeholder="搜索命令、描述或标签（支持空格多词 + 模糊匹配）..." oninput="onSearchInput()" autocomplete="off">
             
             <div class="category-container" id="mainCategories">
                 <div class="main-category all active" data-category="all" onclick="selectMainCategory('all')">全部</div>
@@ -562,33 +567,33 @@
                 <h2 id="loginModalTitle">🔐 管理员登录</h2>
                 <button class="close-btn" onclick="closeLoginModal()">&times;</button>
             </div>
-            <div id="setupForm">
+            <div id="setupForm" autocomplete="off">
                 <p style="color:#94a3b8;font-size:0.9rem;margin-bottom:16px">首次使用，请创建管理员账号：</p>
                 <div class="form-group">
                     <label>用户名</label>
-                    <input type="text" id="setupUsername" placeholder="输入用户名" autocomplete="off">
+                    <input type="text" id="suName" placeholder="输入用户名" autocomplete="off">
                 </div>
                 <div class="form-group">
                     <label>密码</label>
-                    <input type="password" id="setupPassword" placeholder="至少 6 位">
+                    <input type="password" id="setupPassword" placeholder="至少 6 位" autocomplete="new-password">
                 </div>
                 <div class="form-group">
                     <label>确认密码</label>
-                    <input type="password" id="setupPasswordConfirm" placeholder="再次输入密码">
+                    <input type="password" id="setupPasswordConfirm" placeholder="再次输入密码" autocomplete="new-password">
                 </div>
                 <div id="setupError" style="color:#ef4444;margin-bottom:12px;display:none"></div>
                 <div class="form-actions">
                     <button class="btn btn-primary" onclick="handleSetup()">创建账号</button>
                 </div>
             </div>
-            <div id="loginForm" style="display:none">
+            <div id="loginForm" style="display:none" autocomplete="off">
                 <div class="form-group">
                     <label>用户名</label>
-                    <input type="text" id="loginUsername">
+                    <input type="text" id="loginUsername" autocomplete="off">
                 </div>
                 <div class="form-group">
                     <label>密码</label>
-                    <input type="password" id="loginPassword">
+                    <input type="password" id="loginPassword" autocomplete="new-password">
                 </div>
                 <div id="loginError" style="color:#ef4444;margin-bottom:12px;display:none"></div>
                 <div class="form-actions">
@@ -837,7 +842,7 @@
         }
 
         async function handleSetup() {
-            const username = document.getElementById('setupUsername').value.trim();
+            const username = document.getElementById('suName').value.trim();
             const password = document.getElementById('setupPassword').value;
             const confirm = document.getElementById('setupPasswordConfirm').value;
             const errorEl = document.getElementById('setupError');
