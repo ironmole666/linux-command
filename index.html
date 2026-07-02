@@ -564,11 +564,29 @@
     <div class="modal" id="loginModal">
         <div class="modal-content" style="max-width:400px">
             <div class="modal-header">
-                <h2 id="loginModalTitle">🔐 管理员登录</h2>
+                <h2>🔐 管理员登录</h2>
                 <button class="close-btn" onclick="closeLoginModal()">&times;</button>
             </div>
-            <div id="setupForm" autocomplete="off">
-                <p style="color:#94a3b8;font-size:0.9rem;margin-bottom:16px">首次使用，请创建管理员账号：</p>
+            <div class="login-tabs" style="display:flex;gap:0;margin-bottom:16px;border-bottom:2px solid #334155">
+                <button id="loginTabBtn" class="login-tab active" onclick="switchLoginTab('login')" style="flex:1;padding:8px 0;background:none;border:none;color:white;cursor:pointer;border-bottom:2px solid #0ea5e9;margin-bottom:-2px">登录</button>
+                <button id="setupTabBtn" class="login-tab" onclick="switchLoginTab('setup')" style="flex:1;padding:8px 0;background:none;border:none;color:#94a3b8;cursor:pointer;border-bottom:2px solid transparent;margin-bottom:-2px">创建账号</button>
+            </div>
+            <div id="loginForm" autocomplete="off">
+                <div class="form-group">
+                    <label>用户名</label>
+                    <input type="text" id="loginUsername" autocomplete="off">
+                </div>
+                <div class="form-group">
+                    <label>密码</label>
+                    <input type="password" id="loginPassword" autocomplete="new-password">
+                </div>
+                <div id="loginError" style="color:#ef4444;margin-bottom:12px;display:none"></div>
+                <div class="form-actions">
+                    <button class="btn btn-primary" onclick="handleLogin()">登录</button>
+                </div>
+            </div>
+            <div id="setupForm" style="display:none" autocomplete="off">
+                <p style="color:#94a3b8;font-size:0.9rem;margin-bottom:16px">创建新的管理员账号：</p>
                 <div class="form-group">
                     <label>用户名</label>
                     <input type="text" id="suName" placeholder="输入用户名" autocomplete="off">
@@ -582,22 +600,9 @@
                     <input type="password" id="setupPasswordConfirm" placeholder="再次输入密码" autocomplete="new-password">
                 </div>
                 <div id="setupError" style="color:#ef4444;margin-bottom:12px;display:none"></div>
+                <div id="setupCloudWarning" style="color:#f59e0b;font-size:0.85rem;margin-bottom:12px;display:none"></div>
                 <div class="form-actions">
                     <button class="btn btn-primary" onclick="handleSetup()">创建账号</button>
-                </div>
-            </div>
-            <div id="loginForm" style="display:none" autocomplete="off">
-                <div class="form-group">
-                    <label>用户名</label>
-                    <input type="text" id="loginUsername" autocomplete="off">
-                </div>
-                <div class="form-group">
-                    <label>密码</label>
-                    <input type="password" id="loginPassword" autocomplete="new-password">
-                </div>
-                <div id="loginError" style="color:#ef4444;margin-bottom:12px;display:none"></div>
-                <div class="form-actions">
-                    <button class="btn btn-primary" onclick="handleLogin()">登录</button>
                 </div>
             </div>
         </div>
@@ -822,19 +827,42 @@
         function openLoginModal() {
             const creds = getAdminCreds();
             const cloudCreds = getCloudAdminCreds();
-            const effectiveCreds = creds || cloudCreds;
             if (!creds && cloudCreds) {
                 localStorage.setItem('admin_creds', JSON.stringify(cloudCreds));
             }
-            document.getElementById('setupForm').style.display = effectiveCreds ? 'none' : '';
-            document.getElementById('loginForm').style.display = effectiveCreds ? '' : 'none';
-            document.getElementById('loginModalTitle').textContent = effectiveCreds ? '🔐 管理员登录' : '👤 创建管理员账号';
-            document.getElementById('loginError').style.display = 'none';
-            document.getElementById('setupError').style.display = 'none';
             document.getElementById('loginPassword').value = '';
             document.getElementById('setupPassword').value = '';
             document.getElementById('setupPasswordConfirm').value = '';
+            document.getElementById('loginError').style.display = 'none';
+            document.getElementById('setupError').style.display = 'none';
+            document.getElementById('setupCloudWarning').style.display = 'none';
+            switchLoginTab('login');
             document.getElementById('loginModal').classList.add('active');
+        }
+
+        function switchLoginTab(tab) {
+            const loginForm = document.getElementById('loginForm');
+            const setupForm = document.getElementById('setupForm');
+            const loginBtn = document.getElementById('loginTabBtn');
+            const setupBtn = document.getElementById('setupTabBtn');
+            if (tab === 'login') {
+                loginForm.style.display = '';
+                setupForm.style.display = 'none';
+                loginBtn.style.color = 'white';
+                loginBtn.style.borderBottomColor = '#0ea5e9';
+                setupBtn.style.color = '#94a3b8';
+                setupBtn.style.borderBottomColor = 'transparent';
+            } else {
+                loginForm.style.display = 'none';
+                setupForm.style.display = '';
+                loginBtn.style.color = '#94a3b8';
+                loginBtn.style.borderBottomColor = 'transparent';
+                setupBtn.style.color = 'white';
+                setupBtn.style.borderBottomColor = '#0ea5e9';
+            }
+            document.getElementById('loginError').style.display = 'none';
+            document.getElementById('setupError').style.display = 'none';
+            document.getElementById('setupCloudWarning').style.display = 'none';
         }
 
         function closeLoginModal() {
@@ -846,11 +874,22 @@
             const password = document.getElementById('setupPassword').value;
             const confirm = document.getElementById('setupPasswordConfirm').value;
             const errorEl = document.getElementById('setupError');
+            const warningEl = document.getElementById('setupCloudWarning');
             if (!username) { errorEl.textContent = '请输入用户名'; errorEl.style.display = ''; return; }
             if (password.length < 6) { errorEl.textContent = '密码至少 6 位'; errorEl.style.display = ''; return; }
             if (password !== confirm) { errorEl.textContent = '两次密码不一致'; errorEl.style.display = ''; return; }
+            const cloudCreds = getCloudAdminCreds();
+            if (cloudCreds && !window._confirmCloudOverride) {
+                warningEl.textContent = '⚠️ 云端已有管理员账号，创建新账号将覆盖它。再次点击"创建账号"确认。';
+                warningEl.style.display = '';
+                window._confirmCloudOverride = true;
+                setTimeout(() => { window._confirmCloudOverride = false; }, 5000);
+                return;
+            }
+            window._confirmCloudOverride = false;
             const hash = await hashPassword(password);
             setAdminCreds(username, hash);
+            localStorage.removeItem('cloud_admin_creds');
             isAdmin = true;
             localStorage.setItem('admin_logged_in', 'true');
             updateModeUI();
