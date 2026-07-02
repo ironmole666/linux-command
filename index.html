@@ -826,9 +826,18 @@
 
         function openLoginModal() {
             const creds = getAdminCreds();
-            const cloudCreds = getCloudAdminCreds();
-            if (!creds && cloudCreds) {
-                localStorage.setItem('admin_creds', JSON.stringify(cloudCreds));
+            if (!creds) {
+                const cloudCreds = getCloudAdminCreds();
+                if (cloudCreds) {
+                    localStorage.setItem('admin_creds', JSON.stringify(cloudCreds));
+                } else {
+                    fetch(RAW_DATA_URL + '?_=' + Date.now()).then(r => r.ok && r.json()).then(data => {
+                        if (data && data.adminUsername && data.adminHash) {
+                            localStorage.setItem('cloud_admin_creds', JSON.stringify({ username: data.adminUsername, passwordHash: data.adminHash }));
+                            localStorage.setItem('admin_creds', JSON.stringify({ username: data.adminUsername, passwordHash: data.adminHash }));
+                        }
+                    }).catch(() => {});
+                }
             }
             document.getElementById('loginPassword').value = '';
             document.getElementById('setupPassword').value = '';
@@ -896,7 +905,10 @@
             closeLoginModal();
             showToast('👑 管理员账号已创建');
             updateSyncUI();
-            if (getGitHubToken()) syncPull();
+            if (getGitHubToken()) {
+                await syncPull();
+                await syncPush();
+            }
         }
 
         async function handleLogin() {
@@ -913,7 +925,10 @@
                 closeLoginModal();
                 showToast('👑 已登录');
                 updateSyncUI();
-                if (getGitHubToken()) syncPull();
+                if (getGitHubToken()) {
+                    await syncPull();
+                    await syncPush();
+                }
             } else {
                 errorEl.textContent = '用户名或密码错误';
                 errorEl.style.display = '';
@@ -971,7 +986,9 @@
 
             if (isAdmin) {
                 updateSyncUI();
-                syncPull();
+                syncPull().then(() => {
+                    if (getGitHubToken() && getAdminCreds()) syncPush();
+                });
             } else {
                 fetchPublicData().then(remoteCommands => {
                     if (remoteCommands && remoteCommands.length > 0 && remoteCommands.length !== commands.length) {
