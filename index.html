@@ -416,6 +416,14 @@
         }
         .sync-link { color: #0ea5e9; text-decoration: none; }
         .sync-link:hover { text-decoration: underline; }
+        .auth-badge {
+            display: inline-flex; align-items: center; gap: 6px;
+            padding: 6px 14px; border-radius: 8px; font-size: 0.85rem; font-weight: 600;
+        }
+        .auth-badge.visitor { background: #475569; color: #94a3b8; }
+        .auth-badge.admin { background: #1e3a8a; color: #93c5fd; }
+        body:not(.admin-mode) .admin-only { display: none !important; }
+        body.admin-mode .visitor-only { display: none !important; }
     </style>
 </head>
 <body>
@@ -424,7 +432,9 @@
             <div class="header-content">
                <h1>命令管理器</h1>
                 <div class="header-actions">
-                    <button class="btn btn-primary" onclick="openModal()">
+                    <span class="auth-badge visitor visitor-only">🔒 访客模式</span>
+                    <span class="auth-badge admin admin-only">👑 管理员</span>
+                    <button class="btn btn-primary admin-only" onclick="openModal()">
                         <span>➕</span> 添加命令
                     </button>
                     <div style="display:flex;gap:4px;align-items:center">
@@ -432,9 +442,11 @@
                         <button class="btn btn-outline btn-sm" onclick="exportData('markdown')">MD</button>
                         <button class="btn btn-outline btn-sm" onclick="exportData('csv')">CSV</button>
                     </div>
-                    <button class="btn btn-outline" onclick="document.getElementById('importInput').click()">📥 导入</button>
-                    <button class="btn btn-outline" onclick="manualSync()" title="手动同步到 GitHub">☁️ 同步</button>
+                    <button class="btn btn-outline admin-only" onclick="document.getElementById('importInput').click()">📥 导入</button>
+                    <button class="btn btn-outline admin-only" onclick="manualSync()" title="手动同步到 GitHub">☁️ 同步</button>
                     <input type="file" id="importInput" accept=".json" style="display:none" onchange="importData(event)">
+                    <button class="btn btn-outline visitor-only" id="loginBtn" onclick="openLoginModal()">🔐 登录管理</button>
+                    <button class="btn btn-outline admin-only" id="logoutBtn" onclick="logout()">🚪 退出</button>
                 </div>
             </div>
         </header>
@@ -443,7 +455,11 @@
             <div class="stats-bar">
                 <div class="stat-item">总命令: <strong id="totalCount">0</strong></div>
                 <div class="stat-item">当前显示: <strong id="currentCount">0</strong></div>
-                <div class="stat-item sync-status" id="syncStatus" onclick="openSyncModal()" title="点击配置云同步"><span class="sync-dot disconnected" id="syncDot"></span><span id="syncStatusText">未连接</span><span style="margin-left:6px;cursor:pointer;opacity:0.6;transition:opacity 0.2s" onclick="event.stopPropagation();manualSync()" onmouseover="this.style.opacity=1" onmouseout="this.style.opacity=0.6" title="手动同步">⟳</span></div>
+                <div class="stat-item visitor-only" style="cursor:default;opacity:0.7">
+                    <span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:#64748b;margin-right:4px;vertical-align:middle"></span>
+                    只读浏览
+                </div>
+                <div class="stat-item sync-status admin-only" id="syncStatus" onclick="openSyncModal()" title="点击配置云同步"><span class="sync-dot disconnected" id="syncDot"></span><span id="syncStatusText">未连接</span><span style="margin-left:6px;cursor:pointer;opacity:0.6;transition:opacity 0.2s" onclick="event.stopPropagation();manualSync()" onmouseover="this.style.opacity=1" onmouseout="this.style.opacity=0.6" title="手动同步">⟳</span></div>
             </div>
             <div class="search-wrapper"><input type="text" class="search-input" id="searchInput" placeholder="搜索命令、描述或标签（支持空格多词 + 模糊匹配）..." oninput="onSearchInput()"></div>
             
@@ -466,7 +482,7 @@
                     <option value="name">📋 名称</option>
                 </select>
             </div>
-            <div class="batch-bar" id="batchBar">
+            <div class="batch-bar admin-only" id="batchBar">
                 <span class="count" id="batchCount">已选择 0 项</span>
                 <button class="btn btn-outline btn-sm" onclick="selectAll()">全选</button>
                 <button class="btn btn-delete btn-sm" onclick="batchDelete()">🗑️ 批量删除</button>
@@ -537,6 +553,48 @@
                     <button type="submit" class="btn btn-primary">保存</button>
                 </div>
             </form>
+        </div>
+    </div>
+
+    <div class="modal" id="loginModal">
+        <div class="modal-content" style="max-width:400px">
+            <div class="modal-header">
+                <h2 id="loginModalTitle">🔐 管理员登录</h2>
+                <button class="close-btn" onclick="closeLoginModal()">&times;</button>
+            </div>
+            <div id="setupForm">
+                <p style="color:#94a3b8;font-size:0.9rem;margin-bottom:16px">首次使用，请创建管理员账号：</p>
+                <div class="form-group">
+                    <label>用户名</label>
+                    <input type="text" id="setupUsername" placeholder="admin">
+                </div>
+                <div class="form-group">
+                    <label>密码</label>
+                    <input type="password" id="setupPassword" placeholder="至少 6 位">
+                </div>
+                <div class="form-group">
+                    <label>确认密码</label>
+                    <input type="password" id="setupPasswordConfirm" placeholder="再次输入密码">
+                </div>
+                <div id="setupError" style="color:#ef4444;margin-bottom:12px;display:none"></div>
+                <div class="form-actions">
+                    <button class="btn btn-primary" onclick="handleSetup()">创建账号</button>
+                </div>
+            </div>
+            <div id="loginForm" style="display:none">
+                <div class="form-group">
+                    <label>用户名</label>
+                    <input type="text" id="loginUsername">
+                </div>
+                <div class="form-group">
+                    <label>密码</label>
+                    <input type="password" id="loginPassword">
+                </div>
+                <div id="loginError" style="color:#ef4444;margin-bottom:12px;display:none"></div>
+                <div class="form-actions">
+                    <button class="btn btn-primary" onclick="handleLogin()">登录</button>
+                </div>
+            </div>
         </div>
     </div>
 
@@ -727,6 +785,111 @@
 
         let searchTimer;
 
+        // ===== 访客/管理员模式 =====
+        const RAW_DATA_URL = 'https://raw.githubusercontent.com/ironmole666/linux-command/main/data/data.json';
+        let isAdmin = false;
+
+        async function hashPassword(password) {
+            const encoder = new TextEncoder();
+            const data = encoder.encode(password);
+            const hash = await crypto.subtle.digest('SHA-256', data);
+            return Array.from(new Uint8Array(hash)).map(b => b.toString(16).padStart(2, '0')).join('');
+        }
+
+        function getAdminCreds() {
+            const stored = localStorage.getItem('admin_creds');
+            return stored ? JSON.parse(stored) : null;
+        }
+
+        function setAdminCreds(username, passwordHash) {
+            localStorage.setItem('admin_creds', JSON.stringify({ username, passwordHash }));
+        }
+
+        function updateModeUI() {
+            document.body.classList.toggle('admin-mode', isAdmin);
+            document.body.classList.toggle('visitor-mode', !isAdmin);
+        }
+
+        function openLoginModal() {
+            const creds = getAdminCreds();
+            document.getElementById('setupForm').style.display = creds ? 'none' : '';
+            document.getElementById('loginForm').style.display = creds ? '' : 'none';
+            document.getElementById('loginModalTitle').textContent = creds ? '🔐 管理员登录' : '👤 创建管理员账号';
+            document.getElementById('loginError').style.display = 'none';
+            document.getElementById('setupError').style.display = 'none';
+            document.getElementById('loginPassword').value = '';
+            document.getElementById('setupPassword').value = '';
+            document.getElementById('setupPasswordConfirm').value = '';
+            document.getElementById('loginModal').classList.add('active');
+        }
+
+        function closeLoginModal() {
+            document.getElementById('loginModal').classList.remove('active');
+        }
+
+        async function handleSetup() {
+            const username = document.getElementById('setupUsername').value.trim();
+            const password = document.getElementById('setupPassword').value;
+            const confirm = document.getElementById('setupPasswordConfirm').value;
+            const errorEl = document.getElementById('setupError');
+            if (!username) { errorEl.textContent = '请输入用户名'; errorEl.style.display = ''; return; }
+            if (password.length < 6) { errorEl.textContent = '密码至少 6 位'; errorEl.style.display = ''; return; }
+            if (password !== confirm) { errorEl.textContent = '两次密码不一致'; errorEl.style.display = ''; return; }
+            const hash = await hashPassword(password);
+            setAdminCreds(username, hash);
+            isAdmin = true;
+            localStorage.setItem('admin_logged_in', 'true');
+            updateModeUI();
+            closeLoginModal();
+            showToast('👑 管理员账号已创建');
+            updateSyncUI();
+            if (getGitHubToken()) syncPull();
+        }
+
+        async function handleLogin() {
+            const username = document.getElementById('loginUsername').value.trim();
+            const password = document.getElementById('loginPassword').value;
+            const creds = getAdminCreds();
+            const errorEl = document.getElementById('loginError');
+            if (!creds) { errorEl.textContent = '未找到管理员账号'; errorEl.style.display = ''; return; }
+            const hash = await hashPassword(password);
+            if (creds.username === username && creds.passwordHash === hash) {
+                isAdmin = true;
+                localStorage.setItem('admin_logged_in', 'true');
+                updateModeUI();
+                closeLoginModal();
+                showToast('👑 已登录');
+                updateSyncUI();
+                if (getGitHubToken()) syncPull();
+            } else {
+                errorEl.textContent = '用户名或密码错误';
+                errorEl.style.display = '';
+            }
+        }
+
+        function logout() {
+            isAdmin = false;
+            localStorage.removeItem('admin_logged_in');
+            updateModeUI();
+            showToast('已退出管理');
+        }
+
+        async function fetchPublicData() {
+            try {
+                const url = RAW_DATA_URL + '?_=' + Date.now();
+                const res = await fetch(url);
+                if (!res.ok) return null;
+                const data = await res.json();
+                if (data.commands && data.commands.length > 0) {
+                    return data.commands.map(c => ({ ...c, favorite: c.favorite || false, copyCount: c.copyCount || 0 }));
+                }
+                return null;
+            } catch (err) {
+                console.error('Public data fetch error:', err);
+                return null;
+            }
+        }
+
         function onSearchInput() {
             clearTimeout(searchTimer);
             searchTimer = setTimeout(filterCommands, 250);
@@ -739,8 +902,25 @@
             currentFilteredList = [...commands];
             renderCommands(currentFilteredList);
             updateStats(currentFilteredList);
-            updateSyncUI();
-            syncPull();
+
+            isAdmin = localStorage.getItem('admin_logged_in') === 'true';
+            updateModeUI();
+
+            if (isAdmin) {
+                updateSyncUI();
+                syncPull();
+            } else {
+                fetchPublicData().then(remoteCommands => {
+                    if (remoteCommands && remoteCommands.length > 0 && remoteCommands.length !== commands.length) {
+                        commands = remoteCommands;
+                        saveToStorage();
+                        updateCategoryStructure();
+                        saveCategoryStructure();
+                        renderSubCategories();
+                        filterCommands();
+                    }
+                });
+            }
         }
 
         function loadCommands() {
@@ -1238,7 +1418,7 @@
             grid.innerHTML = pageItems.map(cmd => `
                 <div class="command-card${cmd.favorite ? ' favorited' : ''}" data-id="${cmd.id}">
                     <div class="card-row">
-                        <input type="checkbox" class="card-checkbox" data-id="${cmd.id}" onchange="updateBatchBar()">
+                        <input type="checkbox" class="card-checkbox admin-only" data-id="${cmd.id}" onchange="updateBatchBar()">
                         <div class="card-body">
                     <div class="command-header">
                         <div>
@@ -1260,8 +1440,8 @@
                     </div>
                     <div class="card-actions">
                          <button class="btn btn-copy" onclick="copyCommand('${cmd.id}', this)">📋 复制</button>
-                        <button class="btn btn-edit" onclick="editCommand('${cmd.id}')">✏️ 编辑</button>
-                        <button class="btn btn-delete" onclick="deleteCommand('${cmd.id}')">🗑️ 删除</button>
+                        <button class="btn btn-edit admin-only" onclick="editCommand('${cmd.id}')">✏️ 编辑</button>
+                        <button class="btn btn-delete admin-only" onclick="deleteCommand('${cmd.id}')">🗑️ 删除</button>
                     </div>
                         </div>
                     </div>
@@ -1535,6 +1715,12 @@
             }
         });
 
+        document.getElementById('loginModal').addEventListener('click', function(e) {
+            if (e.target === this) {
+                closeLoginModal();
+            }
+        });
+
         function onMainCategoryChange() {
             const mainCat = document.getElementById('mainCategoryInput').value;
             updateSubCategoriesOptions(mainCat);
@@ -1553,11 +1739,13 @@
             if (e.key === 'Escape') {
                 const modal = document.getElementById('commandModal');
                 if (modal.classList.contains('active')) closeModal();
+                const login = document.getElementById('loginModal');
+                if (login.classList.contains('active')) closeLoginModal();
                 const shortcuts = document.getElementById('shortcutsOverlay');
                 if (shortcuts.classList.contains('active')) closeShortcuts();
             }
             if ((e.key === 'n' || e.key === 'N') && !['INPUT', 'TEXTAREA', 'SELECT'].includes(e.target.tagName)) {
-                if (!document.getElementById('commandModal').classList.contains('active')) {
+                if (!document.getElementById('commandModal').classList.contains('active') && isAdmin) {
                     e.preventDefault();
                     openModal();
                 }
