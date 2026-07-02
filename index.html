@@ -400,6 +400,22 @@
             .toast-container { right: 16px; bottom: 16px; left: 16px; }
             .toast-item { width: 100%; }
         }
+        .sync-status { cursor: pointer; }
+        .sync-status:hover { background: #475569; }
+        .sync-status .sync-dot {
+            display: inline-block; width: 8px; height: 8px; border-radius: 50%;
+            margin-right: 4px; vertical-align: middle;
+        }
+        .sync-status .sync-dot.disconnected { background: #ef4444; }
+        .sync-status .sync-dot.syncing { background: #f59e0b; animation: syncPulse 0.8s infinite; }
+        .sync-status .sync-dot.synced { background: #10b981; }
+        .sync-status .sync-dot.error { background: #ef4444; }
+        @keyframes syncPulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.3; }
+        }
+        .sync-link { color: #0ea5e9; text-decoration: none; }
+        .sync-link:hover { text-decoration: underline; }
     </style>
 </head>
 <body>
@@ -426,6 +442,7 @@
             <div class="stats-bar">
                 <div class="stat-item">总命令: <strong id="totalCount">0</strong></div>
                 <div class="stat-item">当前显示: <strong id="currentCount">0</strong></div>
+                <div class="stat-item sync-status" id="syncStatus" onclick="openSyncModal()" title="点击配置云同步"><span class="sync-dot disconnected" id="syncDot"></span><span id="syncStatusText">未连接</span></div>
             </div>
             <div class="search-wrapper"><input type="text" class="search-input" id="searchInput" placeholder="搜索命令、描述或标签（支持空格多词 + 模糊匹配）..." oninput="onSearchInput()"></div>
             
@@ -519,6 +536,29 @@
                     <button type="submit" class="btn btn-primary">保存</button>
                 </div>
             </form>
+        </div>
+    </div>
+
+    <div class="modal" id="syncModal">
+        <div class="modal-content" style="max-width:520px">
+            <div class="modal-header">
+                <h2>☁️ 云同步设置</h2>
+                <button class="close-btn" onclick="closeSyncModal()">&times;</button>
+            </div>
+            <div class="form-group">
+                <label>GitHub Personal Access Token</label>
+                <input type="password" id="tokenInput" placeholder="github_pat_xxxxxxxxxxxx" autocomplete="off">
+            </div>
+            <p style="font-size:0.85rem;color:#94a3b8;margin-bottom:16px;line-height:1.5">
+                需要 Fine-grained token，仓库权限选择 <strong>Contents (Read and write)</strong>。<br>
+                <a class="sync-link" href="https://github.com/settings/tokens?type=beta" target="_blank">去 GitHub 创建 Token →</a>
+            </p>
+            <div id="syncTestResult" style="margin-bottom:12px;font-size:0.9rem;min-height:1.2em"></div>
+            <div class="form-actions">
+                <button class="btn btn-secondary" onclick="clearSyncConfig()">清除</button>
+                <button class="btn btn-outline" onclick="testGitHubConnection()">测试连接</button>
+                <button class="btn btn-primary" onclick="saveSyncConfig()">保存并同步</button>
+            </div>
         </div>
     </div>
 
@@ -698,6 +738,8 @@
             currentFilteredList = [...commands];
             renderCommands(currentFilteredList);
             updateStats(currentFilteredList);
+            updateSyncUI();
+            syncPull();
         }
 
         function loadCommands() {
@@ -758,6 +800,200 @@
 
         function saveToStorage() {
             localStorage.setItem('commandManagerData', JSON.stringify(commands));
+        }
+
+        // ===== GitHub 云同步 =====
+        const GITHUB_OWNER = 'ironmole666';
+        const GITHUB_REPO = 'linux-command';
+        const GITHUB_BRANCH = 'main';
+        const GITHUB_PATH = 'data/data.json';
+
+        let syncStatus = 'disconnected';
+
+        function getGitHubToken() {
+            return localStorage.getItem('github_token') || '';
+        }
+
+        function saveGitHubToken(token) {
+            localStorage.setItem('github_token', token);
+        }
+
+        function clearGitHubToken() {
+            localStorage.removeItem('github_token');
+            localStorage.removeItem('lastSyncAt');
+            syncStatus = 'disconnected';
+            updateSyncUI();
+        }
+
+        function utf8ToBase64(str) {
+            return btoa(unescape(encodeURIComponent(str)));
+        }
+
+        function base64ToUtf8(str) {
+            return decodeURIComponent(escape(atob(str)));
+        }
+
+        async function fetchGitHubFile(token) {
+            const url = `https://api.github.com/repos/${GITHUB_OWNER}/${GITHUB_REPO}/contents/${GITHUB_PATH}?ref=${GITHUB_BRANCH}`;
+            const res = await fetch(url, {
+                headers: {
+                    Authorization: `Bearer ${token}`,
+                    Accept: 'application/vnd.github.v3+json',
+                    'User-Agent': 'command-manager'
+                }
+            });
+            if (res.status === 404) return null;
+            if (!res.ok) throw new Error(`HTTP ${res.status}`);
+            const data = await res.json();
+            return {
+                content: JSON.parse(base64ToUtf8(data.content)),
+                sha: data.sha
+            };
+        }
+
+        async function pushGitHubFile(commands, token, sha) {
+            const payload = JSON.stringify({ commands, updatedAt: new Date().toISOString() });
+            const body = {
+                message: `同步命令数据 [${new Date().toLocaleString('zh-CN')}]`,
+                content: utf8ToBase64(payload),
+                branch: GITHUB_BRANCH
+            };
+            if (sha) body.sha = sha;
+
+            const url = `https://api.github.com/repos/${GITHUB_OWNER}/${GITHUB_REPO}/contents/${GITHUB_PATH}`;
+            const res = await fetch(url, {
+                method: 'PUT',
+                headers: {
+                    Authorization: `Bearer ${token}`,
+                    'Content-Type': 'application/json',
+                    Accept: 'application/vnd.github.v3+json',
+                    'User-Agent': 'command-manager'
+                },
+                body: JSON.stringify(body)
+            });
+            if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        }
+
+        function updateSyncUI() {
+            const dot = document.getElementById('syncDot');
+            const text = document.getElementById('syncStatusText');
+            if (!dot || !text) return;
+            dot.className = 'sync-dot ' + syncStatus;
+            switch (syncStatus) {
+                case 'disconnected':
+                    text.textContent = '未连接';
+                    break;
+                case 'syncing':
+                    text.textContent = '同步中…';
+                    break;
+                case 'synced':
+                    const lastSync = localStorage.getItem('lastSyncAt');
+                    text.textContent = lastSync ? new Date(lastSync).toLocaleString('zh-CN') : '已同步';
+                    break;
+                case 'error':
+                    text.textContent = '同步失败';
+                    break;
+            }
+        }
+
+        async function syncPull() {
+            const token = getGitHubToken();
+            if (!token) return;
+
+            syncStatus = 'syncing';
+            updateSyncUI();
+
+            try {
+                const result = await fetchGitHubFile(token);
+                if (result && result.content && result.content.commands) {
+                    const { commands: ghCommands, updatedAt } = result.content;
+                    const lastSyncAt = localStorage.getItem('lastSyncAt');
+                    if (!lastSyncAt || new Date(updatedAt) > new Date(lastSyncAt)) {
+                        commands = ghCommands.map(c => ({
+                            ...c,
+                            favorite: c.favorite || false,
+                            copyCount: c.copyCount || 0
+                        }));
+                        saveToStorage();
+                        updateCategoryStructure();
+                        saveCategoryStructure();
+                        renderSubCategories();
+                        filterCommands();
+                    }
+                }
+                syncStatus = 'synced';
+                localStorage.setItem('lastSyncAt', new Date().toISOString());
+            } catch (err) {
+                console.error('Sync pull error:', err);
+                syncStatus = 'error';
+            }
+            updateSyncUI();
+        }
+
+        async function syncPush() {
+            const token = getGitHubToken();
+            if (!token) return;
+
+            syncStatus = 'syncing';
+            updateSyncUI();
+
+            try {
+                const current = await fetchGitHubFile(token);
+                const sha = current && current.sha ? current.sha : undefined;
+                await pushGitHubFile(commands, token, sha);
+                syncStatus = 'synced';
+                localStorage.setItem('lastSyncAt', new Date().toISOString());
+            } catch (err) {
+                console.error('Sync push error:', err);
+                syncStatus = 'error';
+            }
+            updateSyncUI();
+        }
+
+        async function testGitHubConnection() {
+            const token = document.getElementById('tokenInput').value.trim();
+            const resultEl = document.getElementById('syncTestResult');
+            if (!token) { resultEl.innerHTML = '<span style="color:#f59e0b">请输入 Token</span>'; return; }
+            resultEl.innerHTML = '<span style="color:#94a3b8">测试中…</span>';
+            try {
+                const result = await fetchGitHubFile(token);
+                if (result) {
+                    resultEl.innerHTML = `<span style="color:#10b981">✅ 连接成功！远程仓库有 ${result.content.commands.length} 条命令</span>`;
+                } else {
+                    resultEl.innerHTML = '<span style="color:#10b981">✅ 连接成功！首次同步时将自动创建数据文件</span>';
+                }
+            } catch (err) {
+                resultEl.innerHTML = `<span style="color:#ef4444">❌ 连接失败：${err.message}</span>`;
+            }
+        }
+
+        function saveSyncConfig() {
+            const token = document.getElementById('tokenInput').value.trim();
+            if (!token) { showToast('请输入 Token'); return; }
+            saveGitHubToken(token);
+            closeSyncModal();
+            showToast('同步配置已保存');
+            syncPull();
+        }
+
+        function clearSyncConfig() {
+            if (!confirm('确定清除同步配置？')) return;
+            clearGitHubToken();
+            document.getElementById('tokenInput').value = '';
+            document.getElementById('syncTestResult').innerHTML = '';
+            closeSyncModal();
+            showToast('已清除同步配置');
+        }
+
+        function openSyncModal() {
+            const token = getGitHubToken();
+            document.getElementById('tokenInput').value = token;
+            document.getElementById('syncTestResult').innerHTML = '';
+            document.getElementById('syncModal').classList.add('active');
+        }
+
+        function closeSyncModal() {
+            document.getElementById('syncModal').classList.remove('active');
         }
 
         function updateStats(filteredList) {
@@ -1133,6 +1369,7 @@
             }
             
             saveToStorage();
+            syncPush();
             filterCommands();
             closeModal();
             showToast(id ? '命令已更新！' : '命令已添加！');
@@ -1148,10 +1385,12 @@
             const deleted = commands[index];
             commands.splice(index, 1);
             saveToStorage();
+            syncPush();
             filterCommands();
             showUndoToast('命令已删除', () => {
                 commands.splice(index, 0, deleted);
                 saveToStorage();
+                syncPush();
                 filterCommands();
                 showToast('已恢复命令');
             });
@@ -1248,6 +1487,12 @@
             }
         });
 
+        document.getElementById('syncModal').addEventListener('click', function(e) {
+            if (e.target === this) {
+                closeSyncModal();
+            }
+        });
+
         function onMainCategoryChange() {
             const mainCat = document.getElementById('mainCategoryInput').value;
             updateSubCategoriesOptions(mainCat);
@@ -1305,6 +1550,7 @@
             if (!confirm(`确定删除选中的 ${ids.length} 条命令吗？`)) return;
             commands = commands.filter(c => !ids.includes(c.id));
             saveToStorage();
+            syncPush();
             filterCommands();
             showToast(`已删除 ${ids.length} 条命令`);
         }
@@ -1373,6 +1619,7 @@
                         }
                     });
                     saveToStorage();
+                    syncPush();
                     updateCategoryStructure();
                     saveCategoryStructure();
                     filterCommands();
