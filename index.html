@@ -1,0 +1,1391 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>命令管理器</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        ::selection { background: rgba(14, 165, 233, 0.3); color: #e2e8f0; }
+        ::-webkit-scrollbar { width: 8px; height: 8px; }
+        ::-webkit-scrollbar-track { background: #0f172a; }
+        ::-webkit-scrollbar-thumb { background: #475569; border-radius: 4px; }
+        ::-webkit-scrollbar-thumb:hover { background: #64748b; }
+        body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background: linear-gradient(135deg, #0f172a 0%, #1e293b 100%); min-height: 100vh; color: #e2e8f0; }
+        .container { max-width: 1400px; margin: 0 auto; padding: 20px 20px 40px; }
+        
+        header {
+            background: linear-gradient(90deg, #1e3a8a, #0ea5e9);
+            padding: 30px 20px;
+            border-radius: 16px;
+            margin-bottom: 24px;
+            box-shadow: 0 10px 40px rgba(14, 165, 233, 0.3);
+        }
+        
+        h1 { font-size: 2rem; font-weight: 700; display: flex; align-items: center; gap: 12px; }
+        h1::before { content: "🛠️"; font-size: 2.5rem; }
+        
+        .header-content { display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 20px; }
+        
+        .btn {
+            padding: 12px 24px; border: none; border-radius: 10px; cursor: pointer; font-size: 1rem;
+            font-weight: 600; transition: all 0.3s ease; display: inline-flex; align-items: center; gap: 8px;
+        }
+        
+        .btn-primary { background: linear-gradient(135deg, #10b981, #059669); color: white; box-shadow: 0 4px 15px rgba(16, 185, 129, 0.4); }
+        .btn-primary:hover { transform: translateY(-2px); box-shadow: 0 6px 20px rgba(16, 185, 129, 0.5); }
+        .btn-secondary { background: #475569; color: white; }
+        .btn-secondary:hover { background: #64748b; }
+        
+        .search-section { background: #1e293b; padding: 24px; border-radius: 12px; margin-bottom: 24px; border: 1px solid #334155; }
+        
+        .stats-bar { display: flex; gap: 16px; margin-bottom: 16px; flex-wrap: wrap; }
+        .stat-item { background: #334155; padding: 8px 16px; border-radius: 8px; font-size: 0.9rem; display: flex; align-items: center; gap: 6px; }
+        .stat-item strong { color: #0ea5e9; }
+        .stat-item:first-child::before { content: "📦"; font-size: 0.85rem; }
+        .stat-item:last-child::before { content: "👁️"; font-size: 0.85rem; }
+        
+        .search-wrapper { position: relative; }
+        .search-wrapper::before {
+            content: "🔍"; position: absolute; left: 16px; top: 50%; transform: translateY(-50%);
+            font-size: 1rem; z-index: 1; pointer-events: none; opacity: 0.6;
+        }
+        .search-input {
+            width: 100%; padding: 14px 20px 14px 44px; background: #0f172a; border: 2px solid #334155;
+            border-radius: 10px; color: white; font-size: 1rem; transition: all 0.3s ease;
+        }
+        .search-input:focus { outline: none; border-color: #0ea5e9; box-shadow: 0 0 0 3px rgba(14, 165, 233, 0.2); }
+        
+        .category-container {
+            display: flex;
+            gap: 16px;
+            margin-top: 16px;
+            padding-bottom: 16px;
+            border-bottom: 1px solid #334155;
+            flex-wrap: wrap;
+        }
+        
+        .main-category {
+            padding: 10px 20px;
+            border-radius: 12px;
+            cursor: pointer;
+            font-weight: 600;
+            transition: all 0.3s ease;
+            border: 2px solid transparent;
+            font-size: 0.95rem;
+        }
+        
+        .main-category.active {
+            transform: scale(1.05);
+            border-color: rgba(255,255,255,0.3);
+        }
+        
+        .main-category.linux { background: linear-gradient(135deg, #22c55e, #16a34a); }
+        .main-category.windows { background: linear-gradient(135deg, #0078d4, #005a9e); }
+        .main-category.pentest { background: linear-gradient(135deg, #dc2626, #b91c1c); }
+        .main-category.dev { background: linear-gradient(135deg, #a855f7, #9333ea); }
+        .main-category.all { background: linear-gradient(135deg, #6366f1, #4f46e5); }
+        
+        .sub-categories {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 8px;
+            margin-top: 12px;
+            padding-left: 4px;
+        }
+        
+        .sub-category {
+            padding: 6px 14px;
+            background: #334155;
+            border-radius: 16px;
+            cursor: pointer;
+            font-size: 0.85rem;
+            transition: all 0.2s ease;
+            border: 1px solid transparent;
+        }
+        
+        .sub-category:hover { background: #475569; }
+        .sub-category.active {
+            background: #0ea5e9;
+            color: white;
+        }
+        
+        .commands-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(380px, 1fr)); gap: 20px; }
+        
+        .command-card {
+            background: #1e293b;
+            border-radius: 12px;
+            padding: 20px;
+            border: 1px solid #334155;
+            transition: all 0.3s ease;
+            position: relative;
+        }
+        
+        .command-card:hover { transform: translateY(-4px); box-shadow: 0 12px 40px rgba(0, 0, 0, 0.4); border-color: #475569; }
+        .command-card::after {
+            content: ''; position: absolute; inset: 0; border-radius: 12px;
+            opacity: 0; transition: opacity 0.3s;
+            background: linear-gradient(135deg, rgba(14,165,233,0.05), transparent);
+            pointer-events: none;
+        }
+        .command-card:hover::after { opacity: 1; }
+        
+        .command-header { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 12px; }
+        
+        .category-badge {
+            padding: 4px 12px;
+            border-radius: 12px;
+            font-size: 0.75rem;
+            font-weight: 600;
+        }
+        
+        .badge-linux { background: linear-gradient(135deg, #22c55e, #16a34a); }
+        .badge-windows { background: linear-gradient(135deg, #0078d4, #005a9e); }
+        .badge-pentest { background: linear-gradient(135deg, #dc2626, #b91c1c); }
+        .badge-dev { background: linear-gradient(135deg, #a855f7, #9333ea); }
+        
+        .sub-badge {
+            padding: 2px 8px;
+            background: rgba(255,255,255,0.15);
+            border-radius: 6px;
+            font-size: 0.7rem;
+            margin-left: 6px;
+        }
+        
+        .command-code {
+            background: #0f172a;
+            padding: 14px;
+            border-radius: 8px;
+            font-family: 'JetBrains Mono', 'Fira Code', Consolas, monospace;
+            font-size: 0.9rem;
+            color: #10b981;
+            overflow-x: auto;
+            cursor: pointer;
+            margin-bottom: 12px;
+            border: 1px solid #334155;
+            position: relative;
+        }
+        .command-code::after {
+            content: "📋 复制";
+            position: absolute; top: 6px; right: 6px;
+            background: rgba(15,23,42,0.9); color: #94a3b8;
+            padding: 2px 8px; border-radius: 4px;
+            font-family: 'Segoe UI', sans-serif;
+            font-size: 0.7rem; opacity: 0;
+            transition: opacity 0.2s;
+            pointer-events: none;
+        }
+        .command-code:hover::after { opacity: 1; }
+        
+        .command-description {
+            color: #94a3b8;
+            margin-bottom: 0;
+            line-height: 1.6;
+            display: -webkit-box;
+            -webkit-line-clamp: 2;
+            -webkit-box-orient: vertical;
+            overflow: hidden;
+            transition: all 0.35s ease;
+        }
+        .command-description.expanded {
+            -webkit-line-clamp: unset;
+        }
+        .description-wrapper:has(.expanded) .description-expand-btn { color: #38bdf8; }
+        .description-wrapper { margin-bottom: 12px; position: relative; }
+        .description-expand-btn {
+            background: none;
+            border: none;
+            color: #0ea5e9;
+            cursor: pointer;
+            font-size: 0.8rem;
+            padding: 4px 0;
+            margin-top: 4px;
+        }
+        .description-expand-btn:hover { color: #38bdf8; text-decoration: underline; }
+        
+        .tags { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 16px; }
+        .tag { background: #334155; padding: 4px 10px; border-radius: 6px; font-size: 0.8rem; color: #cbd5e1; }
+        
+        .card-actions { display: flex; gap: 8px; }
+        .card-actions .btn { padding: 8px 16px; font-size: 0.85rem; flex: 1; }
+        
+        .btn-copy { background: linear-gradient(135deg, #0ea5e9, #0284c7); color: white; }
+        .btn-copy:hover { background: linear-gradient(135deg, #0284c7, #0369a1); }
+        .btn-edit { background: #334155; color: white; }
+        .btn-edit:hover { background: #475569; }
+        .btn-delete { background: #dc2626; color: white; }
+        .btn-delete:hover { background: #b91c1c; }
+        
+        .modal {
+            display: none;
+            position: fixed;
+            top: 0; left: 0; width: 100%; height: 100%;
+            background: rgba(0, 0, 0, 0.7);
+            backdrop-filter: blur(5px);
+            z-index: 1000;
+            justify-content: center;
+            align-items: center;
+            opacity: 0;
+            transition: opacity 0.25s ease;
+        }
+        
+        .modal.active { display: flex; opacity: 1; }
+        
+        .modal-content {
+            background: #1e293b;
+            padding: 30px;
+            border-radius: 16px;
+            width: 90%;
+            max-width: 600px;
+            max-height: 90vh;
+            overflow-y: auto;
+            border: 1px solid #334155;
+            transform: scale(0.95) translateY(10px);
+            transition: transform 0.25s ease;
+        }
+        .modal.active .modal-content { transform: scale(1) translateY(0); }
+        
+        .modal-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 24px; }
+        .modal-header h2 { font-size: 1.5rem; }
+        
+        .close-btn {
+            background: none; border: none; color: #94a3b8; font-size: 1.8rem;
+            cursor: pointer; transition: color 0.3s;
+        }
+        
+        .close-btn:hover { color: white; }
+        
+        .form-group { margin-bottom: 20px; }
+        .form-group label { display: block; margin-bottom: 8px; font-weight: 600; color: #cbd5e1; }
+        
+        .form-group input, .form-group textarea, .form-group select {
+            width: 100%; padding: 12px; background: #0f172a;
+            border: 2px solid #334155; border-radius: 8px;
+            color: white; font-size: 1rem; transition: all 0.3s;
+        }
+        
+        .form-group input:focus, .form-group textarea:focus, .form-group select:focus {
+            outline: none; border-color: #0ea5e9; box-shadow: 0 0 0 3px rgba(14, 165, 233, 0.15);
+        }
+        
+        .form-group textarea { min-height: 100px; resize: vertical; font-family: monospace; }
+        
+        .form-row { display: flex; gap: 12px; }
+        .form-row .form-group { flex: 1; }
+        
+        .form-actions { display: flex; gap: 12px; justify-content: flex-end; margin-top: 24px; }
+        
+        .empty-state { text-align: center; padding: 60px 20px; color: #64748b; grid-column: 1 / -1; }
+        .empty-state-icon { font-size: 4rem; margin-bottom: 16px; }
+        
+        .toast-container {
+            position: fixed; bottom: 30px; right: 30px;
+            z-index: 2000;
+            display: flex;
+            flex-direction: column-reverse;
+            gap: 8px;
+            pointer-events: none;
+        }
+        .toast-item {
+            background: #10b981; color: white;
+            padding: 12px 20px; border-radius: 10px;
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.3);
+            transform: translateX(30px); opacity: 0;
+            transition: all 0.35s cubic-bezier(0.22, 1, 0.36, 1);
+            display: flex; align-items: center; gap: 12px;
+        }
+        .toast-item.show { transform: translateX(0); opacity: 1; }
+        .toast-item.fade { opacity: 0; transform: translateX(30px); }
+        .toast-item.undo-toast { background: #334155; }
+        .toast-undo-btn {
+            background: #0ea5e9; color: white; border: none; border-radius: 6px;
+            padding: 4px 12px; cursor: pointer; font-weight: 600; font-size: 0.85rem;
+            white-space: nowrap; transition: background 0.2s;
+        }
+        .toast-undo-btn:hover { background: #0284c7; }
+        .command-code:hover { border-color: #0ea5e9; }
+        .command-code.copied {
+            animation: flashCopy 0.6s ease;
+            border-color: #10b981;
+        }
+        @keyframes flashCopy {
+            0% { background: #0f172a; }
+            30% { background: rgba(16, 185, 129, 0.3); box-shadow: 0 0 20px rgba(16, 185, 129, 0.3); }
+            100% { background: #0f172a; }
+        }
+        .highlight { background: #eab308; color: #0f172a; padding: 1px 4px; border-radius: 3px; font-weight: 600; }
+        .header-actions { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+        .btn-outline { background: transparent; border: 2px solid rgba(255,255,255,0.3); color: white; }
+        .btn-outline:hover { background: rgba(255,255,255,0.1); border-color: white; }
+        .btn-sm { padding: 6px 14px; font-size: 0.85rem; }
+        .filter-bar { display: flex; gap: 12px; margin-top: 12px; flex-wrap: wrap; align-items: center; }
+        .shortcuts-overlay {
+            display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.6);
+            backdrop-filter: blur(4px); z-index: 3000; justify-content: center; align-items: center;
+            opacity: 0; transition: opacity 0.2s ease;
+        }
+        .shortcuts-overlay.active { display: flex; opacity: 1; }
+        .shortcuts-panel {
+            background: #1e293b; border: 1px solid #334155; border-radius: 16px;
+            padding: 30px; max-width: 480px; width: 90%; max-height: 80vh; overflow-y: auto;
+            transform: scale(0.95); transition: transform 0.25s ease;
+        }
+        .shortcuts-overlay.active .shortcuts-panel { transform: scale(1); }
+        .shortcuts-panel h2 { margin-bottom: 20px; font-size: 1.3rem; }
+        .shortcuts-grid { display: grid; grid-template-columns: 1fr 2fr; gap: 4px 16px; }
+        .shortcuts-grid .key {
+            background: #0f172a; padding: 6px 12px; border-radius: 6px;
+            font-family: monospace; font-size: 0.85rem; text-align: center;
+            border: 1px solid #475569; color: #0ea5e9;
+        }
+        .shortcuts-grid .desc { padding: 6px 0; color: #94a3b8; font-size: 0.9rem; }
+        .btn-star {
+            background: none; border: none; cursor: pointer; font-size: 1.3rem; padding: 2px;
+            transition: all 0.2s; line-height: 1;
+        }
+        .btn-star:hover { transform: scale(1.3); }
+        .btn-star.favorited { animation: starPop 0.3s ease; }
+        @keyframes starPop {
+            0% { transform: scale(1); }
+            50% { transform: scale(1.3); }
+            100% { transform: scale(1); }
+        }
+        .sort-select {
+            background: #334155; color: white; border: 1px solid #475569;
+            padding: 6px 12px; border-radius: 8px; font-size: 0.85rem;
+            cursor: pointer;
+        }
+        .sort-select:focus { outline: none; border-color: #0ea5e9; }
+        .command-card.favorited { border-color: #eab308; }
+
+        .batch-bar {
+            display: none; background: #334155; border-radius: 10px;
+            padding: 12px 16px; margin-bottom: 16px; align-items: center; gap: 12px; flex-wrap: wrap;
+            transform: translateY(-8px); opacity: 0;
+            transition: all 0.3s ease;
+        }
+        .batch-bar.active { display: flex; transform: translateY(0); opacity: 1; }
+        .batch-bar .count { color: #94a3b8; font-size: 0.9rem; flex: 1; }
+        .card-checkbox {
+            width: 18px; height: 18px; cursor: pointer; accent-color: #0ea5e9;
+            flex-shrink: 0;
+        }
+        .command-card .card-row { display: flex; gap: 10px; align-items: flex-start; }
+        .command-card .card-body { flex: 1; min-width: 0; }
+
+        .pagination { display: flex; justify-content: center; gap: 8px; margin-top: 24px; flex-wrap: wrap; }
+        .page-btn {
+            background: #334155; color: white; border: none; border-radius: 8px;
+            padding: 8px 14px; cursor: pointer; font-size: 0.85rem; transition: all 0.2s;
+            min-width: 36px; text-align: center;
+        }
+        .page-btn:hover { background: #475569; transform: translateY(-1px); }
+        .page-btn.active { background: linear-gradient(135deg, #0ea5e9, #0284c7); box-shadow: 0 2px 12px rgba(14,165,233,0.3); }
+        .page-btn:disabled { opacity: 0.4; cursor: default; transform: none; }
+        .page-info { color: #94a3b8; font-size: 0.85rem; display: flex; align-items: center; padding: 0 8px; }
+        
+        @media (max-width: 1024px) {
+            .commands-grid { grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); }
+        }
+        @media (max-width: 768px) {
+            .commands-grid { grid-template-columns: 1fr; }
+            h1 { font-size: 1.5rem; }
+            .header-content { flex-direction: column; align-items: stretch; }
+            .stats-bar { flex-direction: column; }
+            .form-row { flex-direction: column; }
+            header { padding: 20px 16px; }
+            .search-section { padding: 16px; }
+            .command-card { padding: 16px; }
+            .modal-content { padding: 20px; }
+            .toast-container { right: 16px; bottom: 16px; left: 16px; }
+            .toast-item { width: 100%; }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <header>
+            <div class="header-content">
+               <h1>命令管理器</h1>
+                <div class="header-actions">
+                    <button class="btn btn-primary" onclick="openModal()">
+                        <span>➕</span> 添加命令
+                    </button>
+                    <div style="display:flex;gap:4px;align-items:center">
+                        <button class="btn btn-outline" onclick="exportData('json')">📤 JSON</button>
+                        <button class="btn btn-outline btn-sm" onclick="exportData('markdown')">MD</button>
+                        <button class="btn btn-outline btn-sm" onclick="exportData('csv')">CSV</button>
+                    </div>
+                    <button class="btn btn-outline" onclick="document.getElementById('importInput').click()">📥 导入</button>
+                    <input type="file" id="importInput" accept=".json" style="display:none" onchange="importData(event)">
+                </div>
+            </div>
+        </header>
+
+        <div class="search-section">
+            <div class="stats-bar">
+                <div class="stat-item">总命令: <strong id="totalCount">0</strong></div>
+                <div class="stat-item">当前显示: <strong id="currentCount">0</strong></div>
+            </div>
+            <div class="search-wrapper"><input type="text" class="search-input" id="searchInput" placeholder="搜索命令、描述或标签（支持空格多词 + 模糊匹配）..." oninput="onSearchInput()"></div>
+            
+            <div class="category-container" id="mainCategories">
+                <div class="main-category all active" data-category="all" onclick="selectMainCategory('all')">全部</div>
+                <div class="main-category linux" data-category="Linux" onclick="selectMainCategory('Linux')">🐧 Linux</div>
+                <div class="main-category windows" data-category="Windows" onclick="selectMainCategory('Windows')">🪟 Windows</div>
+                <div class="main-category pentest" data-category="渗透测试" onclick="selectMainCategory('渗透测试')">🔴 渗透测试</div>
+                <div class="main-category dev" data-category="开发工具" onclick="selectMainCategory('开发工具')">💻 开发工具</div>
+            </div>
+            
+            <div class="sub-categories" id="subCategories">
+            </div>
+            <div class="filter-bar" id="filterBar">
+                <button class="btn btn-outline btn-sm" id="favoriteFilter" onclick="toggleFavoriteFilter()">⭐ 全部</button>
+                <select class="sort-select" id="sortSelect" onchange="filterCommands()">
+                    <option value="default">默认排序</option>
+                    <option value="freq">🔥 使用频率</option>
+                    <option value="recent">🕐 最近添加</option>
+                    <option value="name">📋 名称</option>
+                </select>
+            </div>
+            <div class="batch-bar" id="batchBar">
+                <span class="count" id="batchCount">已选择 0 项</span>
+                <button class="btn btn-outline btn-sm" onclick="selectAll()">全选</button>
+                <button class="btn btn-delete btn-sm" onclick="batchDelete()">🗑️ 批量删除</button>
+                <button class="btn btn-sm" style="background:#0ea5e9;color:white" onclick="batchExport()">📤 导出选中</button>
+            </div>
+        </div>
+
+        <div class="commands-grid" id="commandsGrid">
+        </div>
+        <div class="pagination" id="pagination"></div>
+    </div>
+
+    <div class="shortcuts-overlay" id="shortcutsOverlay" onclick="if(event.target===this)closeShortcuts()">
+        <div class="shortcuts-panel">
+            <div class="modal-header">
+                <h2>⌨️ 键盘快捷键</h2>
+                <button class="close-btn" onclick="closeShortcuts()">&times;</button>
+            </div>
+            <div class="shortcuts-grid">
+                <span class="key">N</span><span class="desc">添加新命令</span>
+                <span class="key">⌘F / Ctrl+F</span><span class="desc">聚焦搜索框</span>
+                <span class="key">Esc</span><span class="desc">关闭弹窗</span>
+                <span class="key">?</span><span class="desc">显示此面板</span>
+                <span class="key">单击命令</span><span class="desc">复制到剪贴板</span>
+                <span class="key">⭐ 星标</span><span class="desc">收藏常用命令</span>
+            </div>
+        </div>
+    </div>
+
+    <div class="modal" id="commandModal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2 id="modalTitle">添加命令</h2>
+                <button class="close-btn" onclick="closeModal()">&times;</button>
+            </div>
+            <form id="commandForm" onsubmit="saveCommand(event)">
+                <input type="hidden" id="commandId">
+                <div class="form-group">
+                    <label>命令</label>
+                    <textarea id="commandInput" required placeholder="例如: ls -la"></textarea>
+                </div>
+                <div class="form-group">
+                    <label>说明</label>
+                    <textarea id="descriptionInput" required placeholder="命令的用途说明" rows="2"></textarea>
+                </div>
+                <div class="form-row">
+                    <div class="form-group">
+                        <label>主分类</label>
+                        <select id="mainCategoryInput" required onchange="onMainCategoryChange()">
+                            <option value="Linux">🐧 Linux</option>
+                            <option value="Windows">🪟 Windows</option>
+                            <option value="渗透测试">🔴 渗透测试</option>
+                            <option value="开发工具">💻 开发工具</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label>子分类</label>
+                        <input type="text" id="subCategoryInput" list="subCategoryList" placeholder="输入或选择子分类" required>
+                        <datalist id="subCategoryList"></datalist>
+                    </div>
+                </div>
+                <div class="form-group">
+                    <label>标签（用逗号分隔）</label>
+                    <input type="text" id="tagsInput" placeholder="例如: 文件, 目录, 查看">
+                </div>
+                <div class="form-actions">
+                    <button type="button" class="btn btn-secondary" onclick="closeModal()">取消</button>
+                    <button type="submit" class="btn btn-primary">保存</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <div class="toast-container" id="toastContainer"></div>
+
+    <script>
+        const defaultCategoryStructure = {
+            'Linux': ['系统管理', '文件操作', '网络', '进程', '用户管理', '防火墙', '其他'],
+            'Windows': ['系统管理', '网络', '进程', '用户管理', '其他'],
+            '渗透测试': ['Nmap', 'SQLMap', 'Metasploit', '密码破解', 'Web测试', '无线测试', '其他'],
+            '开发工具': ['Git', 'Docker', 'NPM/Node', 'Python', '数据库', '构建工具', '其他']
+        };
+        
+        let categoryStructure = JSON.parse(JSON.stringify(defaultCategoryStructure));
+
+        const defaultCommands = [
+            // === Linux - 系统管理 ===
+            { id: '1', command: 'sudo apt update && sudo apt upgrade -y', description: '更新Ubuntu系统包列表并升级所有包', mainCategory: 'Linux', subCategory: '系统管理', tags: ['apt', '更新', '升级'], createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() },
+            { id: '2', command: 'sudo apt autoremove -y', description: '自动删除不再需要的包', mainCategory: 'Linux', subCategory: '系统管理', tags: ['apt', '清理'], createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() },
+            { id: '3', command: 'history', description: '查看命令历史记录', mainCategory: 'Linux', subCategory: '系统管理', tags: ['历史', '查看'], createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() },
+            { id: '4', command: 'history -c', description: '清除当前会话的命令历史', mainCategory: 'Linux', subCategory: '系统管理', tags: ['历史', '清除'], createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() },
+            { id: '5', command: 'rm -rf ~/.bash_history', description: '清除指令历史记录文件', mainCategory: 'Linux', subCategory: '系统管理', tags: ['历史', '清除', 'bash'], createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() },
+            
+            // === Linux - 文件操作 ===
+            { id: '6', command: 'ls -la', description: '查看目录下所有文件和文件夹的详细信息', mainCategory: 'Linux', subCategory: '文件操作', tags: ['文件', '目录', '查看'], createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() },
+            { id: '7', command: 'rm -rf <path>', description: '强制删除文件或目录', mainCategory: 'Linux', subCategory: '文件操作', tags: ['删除', '文件', '目录'], createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() },
+            { id: '8', command: 'find /path -name "*.txt"', description: '查找文件', mainCategory: 'Linux', subCategory: '文件操作', tags: ['文件', '查找', 'find'], createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() },
+            { id: '9', command: 'grep -r "text" /path', description: '递归搜索文件内容', mainCategory: 'Linux', subCategory: '文件操作', tags: ['文件', '搜索', 'grep'], createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() },
+            { id: '10', command: 'chmod 755 file.sh', description: '修改文件权限', mainCategory: 'Linux', subCategory: '文件操作', tags: ['文件', '权限', 'chmod'], createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() },
+            { id: '11', command: 'tar -czvf archive.tar.gz /path', description: '压缩目录', mainCategory: 'Linux', subCategory: '文件操作', tags: ['文件', '压缩', 'tar'], createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() },
+            { id: '12', command: 'tar -xzvf archive.tar.gz', description: '解压压缩包', mainCategory: 'Linux', subCategory: '文件操作', tags: ['文件', '解压', 'tar'], createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() },
+            
+            // === Linux - 网络 ===
+            { id: '13', command: 'ip addr show | grep -E "inet " | awk \'{print $2}\' | cut -d\'/\' -f1 | grep -v "^127"', description: '查询本机局域网IP地址', mainCategory: 'Linux', subCategory: '网络', tags: ['ip', '网络', '地址'], createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() },
+            { id: '14', command: 'curl -I http://example.com', description: '发送HTTP HEAD请求', mainCategory: 'Linux', subCategory: '网络', tags: ['curl', 'http', '请求'], createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() },
+            { id: '15', command: 'ping -c 4 192.168.1.1', description: 'Ping命令测试连通性', mainCategory: 'Linux', subCategory: '网络', tags: ['ping', '连通性', '测试'], createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() },
+            { id: '16', command: 'ssh user@hostname', description: 'SSH远程连接', mainCategory: 'Linux', subCategory: '网络', tags: ['ssh', '远程', '连接'], createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() },
+            { id: '17', command: 'scp file.txt user@host:/path/', description: '安全复制文件到远程主机', mainCategory: 'Linux', subCategory: '网络', tags: ['scp', '复制', '远程'], createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() },
+            { id: '18', command: 'netstat -lnpt', description: '查看所有监听端口', mainCategory: 'Linux', subCategory: '网络', tags: ['netstat', '端口', '监听'], createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() },
+            
+            // === Linux - 进程 ===
+            { id: '19', command: 'ps aux', description: '查看所有运行中的进程', mainCategory: 'Linux', subCategory: '进程', tags: ['进程', '查看', 'ps'], createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() },
+            { id: '20', command: 'kill -9 PID', description: '强制终止进程', mainCategory: 'Linux', subCategory: '进程', tags: ['进程', '终止', 'kill'], createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() },
+            { id: '21', command: 'top', description: '实时查看系统进程', mainCategory: 'Linux', subCategory: '进程', tags: ['进程', '监控', 'top'], createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() },
+            { id: '22', command: 'htop', description: '交互式进程查看器', mainCategory: 'Linux', subCategory: '进程', tags: ['进程', '交互', 'htop'], createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() },
+            { id: '23', command: 'pkill -f process_name', description: '根据名称终止进程', mainCategory: 'Linux', subCategory: '进程', tags: ['进程', '终止', 'pkill'], createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() },
+            
+            // === Linux - 用户管理 ===
+            { id: '24', command: 'passwd', description: '修改当前用户密码', mainCategory: 'Linux', subCategory: '用户管理', tags: ['密码', '用户'], createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() },
+            { id: '25', command: 'sudo adduser newuser', description: '创建新用户', mainCategory: 'Linux', subCategory: '用户管理', tags: ['用户', '添加', '创建'], createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() },
+            { id: '26', command: 'sudo usermod -aG sudo newuser', description: '将用户添加到sudo组', mainCategory: 'Linux', subCategory: '用户管理', tags: ['用户', '权限', 'sudo'], createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() },
+            { id: '27', command: 'sudo deluser olduser', description: '删除用户', mainCategory: 'Linux', subCategory: '用户管理', tags: ['用户', '删除'], createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() },
+            
+            // === Windows - 系统管理 ===
+            { id: '28', command: 'sfc /scannow', description: '扫描并修复系统文件', mainCategory: 'Windows', subCategory: '系统管理', tags: ['系统', '修复', 'sfc'], createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() },
+            { id: '29', command: 'DISM /Online /Cleanup-Image /RestoreHealth', description: '修复Windows系统映像', mainCategory: 'Windows', subCategory: '系统管理', tags: ['系统', '修复', 'dism'], createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() },
+            { id: '30', command: 'chkdsk C: /f /r', description: '检查并修复C盘错误', mainCategory: 'Windows', subCategory: '系统管理', tags: ['磁盘', '修复', 'chkdsk'], createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() },
+            { id: '31', command: 'slmgr /skms kms.example.com && slmgr /ato', description: '激活Windows系统', mainCategory: 'Windows', subCategory: '系统管理', tags: ['激活', 'kms', '系统'], createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() },
+            { id: '32', command: 'WMIC /Node:localhost /Namespace:\\root\\SecurityCenter2 Path AntiVirusProduct Get displayName /Format:List', description: '命令行查看安装的杀毒软件', mainCategory: 'Windows', subCategory: '系统管理', tags: ['杀毒软件', '安全', 'wmic'], createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() },
+            
+            // === Windows - 网络 ===
+            { id: '33', command: 'ipconfig /all', description: '显示完整的IP配置信息', mainCategory: 'Windows', subCategory: '网络', tags: ['ip', '网络', '配置'], createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() },
+            { id: '34', command: 'ipconfig /flushdns', description: '清除DNS缓存', mainCategory: 'Windows', subCategory: '网络', tags: ['dns', '缓存', '清除'], createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() },
+            { id: '35', command: 'netstat -an', description: '显示所有网络连接和监听端口', mainCategory: 'Windows', subCategory: '网络', tags: ['netstat', '网络', '端口'], createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() },
+            { id: '36', command: 'netsh wlan show profiles', description: '查看已保存的WiFi列表', mainCategory: 'Windows', subCategory: '网络', tags: ['wifi', '网络', '查看'], createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() },
+            { id: '37', command: 'netsh wlan show profile name="WiFi名称" key=clear', description: '查看指定WiFi的密码', mainCategory: 'Windows', subCategory: '网络', tags: ['wifi', '密码', '查看'], createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() },
+            
+            // === Windows - 进程 ===
+            { id: '38', command: 'tasklist /v', description: '显示所有进程的详细信息', mainCategory: 'Windows', subCategory: '进程', tags: ['进程', '任务', '查看'], createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() },
+            { id: '39', command: 'taskkill /F /IM process.exe', description: '强制终止指定进程', mainCategory: 'Windows', subCategory: '进程', tags: ['进程', '终止', 'taskkill'], createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() },
+            
+            // === Windows - 用户管理 ===
+            { id: '40', command: 'net user username password /add', description: '创建新用户账户', mainCategory: 'Windows', subCategory: '用户管理', tags: ['用户', '添加', 'net'], createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() },
+            { id: '41', command: 'net localgroup administrators username /add', description: '将用户添加到管理员组', mainCategory: 'Windows', subCategory: '用户管理', tags: ['用户', '权限', '管理员'], createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() },
+            
+            // === 渗透测试 - Nmap ===
+            { id: '42', command: 'nmap -sV 192.168.1.1', description: '扫描目标端口版本信息', mainCategory: '渗透测试', subCategory: 'Nmap', tags: ['nmap', '扫描', '版本'], createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() },
+            { id: '43', command: 'nmap -sS -sV -O 192.168.1.0/24', description: '扫描整个网段，半开放扫描，检测操作系统', mainCategory: '渗透测试', subCategory: 'Nmap', tags: ['nmap', '网段', '扫描'], createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() },
+            { id: '44', command: 'nmap -sU -p 1-1000 192.168.1.1', description: 'UDP端口扫描', mainCategory: '渗透测试', subCategory: 'Nmap', tags: ['nmap', 'udp', '扫描'], createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() },
+            { id: '45', command: 'nmap -Pn -sV --script vuln 192.168.1.1', description: '漏洞扫描', mainCategory: '渗透测试', subCategory: 'Nmap', tags: ['nmap', '漏洞', '扫描'], createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() },
+            { id: '46', command: 'nmap -T4 -A -v 192.168.1.1', description: '全面扫描，激进模式，检测服务和系统', mainCategory: '渗透测试', subCategory: 'Nmap', tags: ['nmap', '全面', '扫描'], createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() },
+            
+            // === 渗透测试 - SQLMap ===
+            { id: '47', command: 'sqlmap -u "http://example.com/page.php?id=1" --batch', description: '基础SQL注入检测', mainCategory: '渗透测试', subCategory: 'SQLMap', tags: ['sqlmap', '注入', '检测'], createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() },
+            { id: '48', command: 'sqlmap -u "http://example.com/page.php?id=1" --dbs', description: '列出所有数据库', mainCategory: '渗透测试', subCategory: 'SQLMap', tags: ['sqlmap', '数据库', '列举'], createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() },
+            { id: '49', command: 'sqlmap -u "http://example.com/page.php?id=1" -D database_name --tables', description: '列出指定数据库的所有表', mainCategory: '渗透测试', subCategory: 'SQLMap', tags: ['sqlmap', '表', '列举'], createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() },
+            { id: '50', command: 'sqlmap -u "http://example.com/page.php?id=1" -D database_name -T table_name -C column1,column2 --dump', description: '导出表数据', mainCategory: '渗透测试', subCategory: 'SQLMap', tags: ['sqlmap', '导出', '数据'], createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() },
+            { id: '51', command: 'sqlmap -u "http://example.com/page.php?id=1" --os-shell', description: '尝试获取操作系统shell', mainCategory: '渗透测试', subCategory: 'SQLMap', tags: ['sqlmap', 'os-shell', '提权'], createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() },
+            
+            // === 渗透测试 - Metasploit ===
+            { id: '52', command: 'msfconsole', description: '启动Metasploit框架', mainCategory: '渗透测试', subCategory: 'Metasploit', tags: ['msf', '启动', '框架'], createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() },
+            { id: '53', command: 'search exploit_name', description: '搜索漏洞利用模块', mainCategory: '渗透测试', subCategory: 'Metasploit', tags: ['msf', '搜索', '漏洞'], createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() },
+            { id: '54', command: 'use exploit/windows/smb/ms17_010_eternalblue', description: '使用EternalBlue漏洞模块', mainCategory: '渗透测试', subCategory: 'Metasploit', tags: ['msf', '漏洞', 'smb'], createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() },
+            { id: '55', command: 'set RHOSTS 192.168.1.100', description: '设置目标主机', mainCategory: '渗透测试', subCategory: 'Metasploit', tags: ['msf', '设置', '目标'], createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() },
+            { id: '56', command: 'set PAYLOAD windows/x64/meterpreter/reverse_tcp', description: '设置Meterpreter反弹shell载荷', mainCategory: '渗透测试', subCategory: 'Metasploit', tags: ['msf', 'payload', 'meterpreter'], createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() },
+            { id: '57', command: 'exploit', description: '执行漏洞利用', mainCategory: '渗透测试', subCategory: 'Metasploit', tags: ['msf', '利用', '执行'], createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() },
+            { id: '58', command: 'sessions -l', description: '列出所有会话', mainCategory: '渗透测试', subCategory: 'Metasploit', tags: ['msf', '会话', '列出'], createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() },
+            { id: '59', command: 'sessions -i 1', description: '进入指定会话', mainCategory: '渗透测试', subCategory: 'Metasploit', tags: ['msf', '会话', '交互'], createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() },
+            
+            // === 渗透测试 - 密码破解 ===
+            { id: '60', command: 'hydra -l admin -P password.txt ssh://192.168.1.1', description: 'SSH密码暴力破解', mainCategory: '渗透测试', subCategory: '密码破解', tags: ['hydra', '暴力', '破解'], createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() },
+            { id: '61', command: 'john --wordlist=passwords.txt hash.txt', description: '使用John the Ripper破解密码哈希', mainCategory: '渗透测试', subCategory: '密码破解', tags: ['john', '密码', '破解'], createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() },
+            { id: '62', command: 'hashcat -m 0 -a 0 hash.txt wordlist.txt', description: '使用Hashcat进行密码破解', mainCategory: '渗透测试', subCategory: '密码破解', tags: ['hashcat', '密码', '破解'], createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() },
+            
+            // === 渗透测试 - Web测试 ===
+            { id: '63', command: 'nikto -h http://example.com', description: 'Web服务器漏洞扫描', mainCategory: '渗透测试', subCategory: 'Web测试', tags: ['nikto', 'web', '漏洞'], createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() },
+            { id: '64', command: 'dirb http://example.com', description: '目录和文件爆破', mainCategory: '渗透测试', subCategory: 'Web测试', tags: ['dirb', '目录', '爆破'], createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() },
+            { id: '65', command: 'burpsuite', description: '启动Burp Suite Web渗透测试工具', mainCategory: '渗透测试', subCategory: 'Web测试', tags: ['burp', 'web', '渗透'], createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() },
+            { id: '66', command: 'wireshark', description: '启动Wireshark网络抓包工具', mainCategory: '渗透测试', subCategory: 'Web测试', tags: ['wireshark', '抓包', '分析'], createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() },
+            
+            // === 渗透测试 - 无线测试 ===
+            { id: '67', command: 'airmon-ng start wlan0', description: '开启无线网卡监听模式', mainCategory: '渗透测试', subCategory: '无线测试', tags: ['aircrack', '无线', '监听'], createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() },
+            { id: '68', command: 'airodump-ng wlan0mon', description: '捕获无线网络数据包', mainCategory: '渗透测试', subCategory: '无线测试', tags: ['airodump', '无线', '捕获'], createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() },
+            
+            // === 开发工具 - Git ===
+            { id: '69', command: 'git init', description: '初始化Git仓库', mainCategory: '开发工具', subCategory: 'Git', tags: ['git', '初始化', '仓库'], createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() },
+            { id: '70', command: 'git clone https://github.com/user/repo.git', description: '克隆远程仓库', mainCategory: '开发工具', subCategory: 'Git', tags: ['git', '克隆', '远程'], createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() },
+            { id: '71', command: 'git add .', description: '添加所有文件到暂存区', mainCategory: '开发工具', subCategory: 'Git', tags: ['git', '添加', '暂存'], createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() },
+            { id: '72', command: 'git commit -m "提交信息"', description: '提交更改', mainCategory: '开发工具', subCategory: 'Git', tags: ['git', '提交', 'commit'], createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() },
+            { id: '73', command: 'git push origin main', description: '推送到远程仓库', mainCategory: '开发工具', subCategory: 'Git', tags: ['git', '推送', '远程'], createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() },
+            { id: '74', command: 'git pull origin main', description: '拉取远程更改', mainCategory: '开发工具', subCategory: 'Git', tags: ['git', '拉取', '更新'], createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() },
+            { id: '75', command: 'git branch feature-branch', description: '创建新分支', mainCategory: '开发工具', subCategory: 'Git', tags: ['git', '分支', '创建'], createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() },
+            { id: '76', command: 'git checkout feature-branch', description: '切换到指定分支', mainCategory: '开发工具', subCategory: 'Git', tags: ['git', '切换', '分支'], createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() },
+            { id: '77', command: 'git merge feature-branch', description: '合并分支', mainCategory: '开发工具', subCategory: 'Git', tags: ['git', '合并', '分支'], createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() },
+            { id: '78', command: 'git status', description: '查看Git工作区状态', mainCategory: '开发工具', subCategory: 'Git', tags: ['git', '状态', '查看'], createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() },
+            { id: '79', command: 'git log --oneline --graph', description: '查看提交历史', mainCategory: '开发工具', subCategory: 'Git', tags: ['git', '日志', '历史'], createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() },
+            
+            // === 开发工具 - Docker ===
+            { id: '80', command: 'docker ps -a', description: '查看所有Docker容器', mainCategory: '开发工具', subCategory: 'Docker', tags: ['docker', '容器', '查看'], createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() },
+            { id: '81', command: 'docker images', description: '查看所有镜像', mainCategory: '开发工具', subCategory: 'Docker', tags: ['docker', '镜像', '查看'], createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() },
+            { id: '82', command: 'docker run -d -p 80:80 nginx', description: '运行Nginx容器', mainCategory: '开发工具', subCategory: 'Docker', tags: ['docker', '运行', 'nginx'], createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() },
+            { id: '83', command: 'docker build -t myapp:latest .', description: '构建Docker镜像', mainCategory: '开发工具', subCategory: 'Docker', tags: ['docker', '构建', '镜像'], createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() },
+            { id: '84', command: 'docker exec -it container_name /bin/bash', description: '进入容器bash', mainCategory: '开发工具', subCategory: 'Docker', tags: ['docker', '进入', '容器'], createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() },
+            { id: '85', command: 'docker-compose up -d', description: '启动docker-compose服务', mainCategory: '开发工具', subCategory: 'Docker', tags: ['docker', 'compose', '启动'], createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() },
+            { id: '86', command: 'docker-compose down', description: '停止docker-compose服务', mainCategory: '开发工具', subCategory: 'Docker', tags: ['docker', 'compose', '停止'], createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() },
+            
+            // === 开发工具 - NPM/Node ===
+            { id: '87', command: 'npm install package_name', description: '安装npm包', mainCategory: '开发工具', subCategory: 'NPM/Node', tags: ['npm', '安装', '包'], createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() },
+            { id: '88', command: 'npm install -g package_name', description: '全局安装npm包', mainCategory: '开发工具', subCategory: 'NPM/Node', tags: ['npm', '全局', '安装'], createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() },
+            { id: '89', command: 'npm init -y', description: '初始化npm项目', mainCategory: '开发工具', subCategory: 'NPM/Node', tags: ['npm', '初始化', '项目'], createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() },
+            { id: '90', command: 'npm run dev', description: '运行开发服务器', mainCategory: '开发工具', subCategory: 'NPM/Node', tags: ['npm', '开发', '运行'], createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() },
+            { id: '91', command: 'npm run build', description: '构建生产版本', mainCategory: '开发工具', subCategory: 'NPM/Node', tags: ['npm', '构建', '生产'], createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() },
+            
+            // === 开发工具 - Python ===
+            { id: '92', command: 'pip install package_name', description: '安装Python包', mainCategory: '开发工具', subCategory: 'Python', tags: ['pip', 'python', '安装'], createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() },
+            { id: '93', command: 'python -m venv env', description: '创建Python虚拟环境', mainCategory: '开发工具', subCategory: 'Python', tags: ['python', '虚拟环境', '创建'], createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() },
+            { id: '94', command: 'source env/bin/activate', description: '激活Python虚拟环境', mainCategory: '开发工具', subCategory: 'Python', tags: ['python', '虚拟环境', '激活'], createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() },
+            
+            // === 开发工具 - 数据库 ===
+            { id: '95', command: 'mysql -u root -p', description: '连接MySQL数据库', mainCategory: '开发工具', subCategory: '数据库', tags: ['mysql', '数据库', '连接'], createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() },
+            { id: '96', command: 'psql -U username -d database', description: '连接PostgreSQL数据库', mainCategory: '开发工具', subCategory: '数据库', tags: ['postgresql', '数据库', '连接'], createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() },
+            
+            // === 开发工具 - 构建工具 ===
+            { id: '97', command: 'make', description: '执行Makefile构建', mainCategory: '开发工具', subCategory: '构建工具', tags: ['make', '构建', '编译'], createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() },
+            { id: '98', command: 'cmake . && make', description: 'CMake构建项目', mainCategory: '开发工具', subCategory: '构建工具', tags: ['cmake', '构建', '编译'], createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() }
+        ];
+
+        let commands = [];
+        let currentMainCategory = 'all';
+        let currentSubCategory = 'all';
+        let showFavoritesOnly = false;
+        let currentPage = 1;
+        const pageSize = 30;
+        let currentFilteredList = [];
+
+        let searchTimer;
+
+        function onSearchInput() {
+            clearTimeout(searchTimer);
+            searchTimer = setTimeout(filterCommands, 250);
+        }
+
+        function init() {
+            loadCategoryStructure();
+            loadCommands();
+            renderSubCategories();
+            currentFilteredList = [...commands];
+            renderCommands(currentFilteredList);
+            updateStats(currentFilteredList);
+        }
+
+        function loadCommands() {
+            const stored = localStorage.getItem('commandManagerData');
+            if (stored) {
+                const storedCommands = JSON.parse(stored);
+                const hasValidStructure = storedCommands.length > 0 && 
+                    storedCommands[0].mainCategory && storedCommands[0].subCategory;
+                if (hasValidStructure) {
+                    commands = storedCommands;
+                    commands.forEach(cmd => {
+                        if (cmd.favorite === undefined) cmd.favorite = false;
+                        if (cmd.copyCount === undefined) cmd.copyCount = 0;
+                    });
+                    updateCategoryStructure();
+                } else {
+                    commands = defaultCommands.map(c => ({...c, favorite: false, copyCount: 0}));
+                    saveToStorage();
+                }
+            } else {
+                commands = defaultCommands.map(c => ({...c, favorite: false, copyCount: 0}));
+                saveToStorage();
+            }
+        }
+        
+        function updateCategoryStructure() {
+            commands.forEach(cmd => {
+                if (!categoryStructure[cmd.mainCategory]) {
+                    categoryStructure[cmd.mainCategory] = [];
+                }
+                if (!categoryStructure[cmd.mainCategory].includes(cmd.subCategory)) {
+                    categoryStructure[cmd.mainCategory].push(cmd.subCategory);
+                }
+            });
+        }
+        
+        function saveCategoryStructure() {
+            localStorage.setItem('categoryStructure', JSON.stringify(categoryStructure));
+        }
+        
+        function loadCategoryStructure() {
+            const stored = localStorage.getItem('categoryStructure');
+            if (stored) {
+                categoryStructure = JSON.parse(stored);
+                // 确保每个分类的"其他"都在最后
+                Object.keys(categoryStructure).forEach(mainCat => {
+                    const otherIndex = categoryStructure[mainCat].indexOf('其他');
+                    if (otherIndex !== -1 && otherIndex !== categoryStructure[mainCat].length - 1) {
+                        categoryStructure[mainCat].splice(otherIndex, 1);
+                        categoryStructure[mainCat].push('其他');
+                    }
+                });
+                saveCategoryStructure();
+            } else {
+                categoryStructure = JSON.parse(JSON.stringify(defaultCategoryStructure));
+            }
+        }
+
+        function saveToStorage() {
+            localStorage.setItem('commandManagerData', JSON.stringify(commands));
+        }
+
+        function updateStats(filteredList) {
+            document.getElementById('totalCount').textContent = commands.length;
+            document.getElementById('currentCount').textContent = filteredList ? filteredList.length : commands.length;
+        }
+
+        function toggleFavorite(id) {
+            const cmd = commands.find(c => c.id === id);
+            if (cmd) {
+                cmd.favorite = !cmd.favorite;
+                saveToStorage();
+                filterCommands();
+            }
+        }
+
+        function toggleFavoriteFilter() {
+            showFavoritesOnly = !showFavoritesOnly;
+            const btn = document.getElementById('favoriteFilter');
+            btn.textContent = showFavoritesOnly ? '⭐ 仅收藏' : '⭐ 全部';
+            btn.classList.toggle('btn-primary', showFavoritesOnly);
+            btn.classList.toggle('btn-outline', !showFavoritesOnly);
+            filterCommands();
+        }
+
+        function fuzzyMatch(text, pattern) {
+            let pi = 0;
+            for (let i = 0; i < text.length && pi < pattern.length; i++) {
+                if (text[i] === pattern[pi]) pi++;
+            }
+            return pi === pattern.length;
+        }
+
+        function matchesSearch(cmd, terms) {
+            if (!terms.length) return true;
+            const cmdText = (cmd.command + ' ' + cmd.description + ' ' + cmd.tags.join(' ')).toLowerCase();
+            const cmdExact = cmd.command.toLowerCase();
+            const descExact = cmd.description.toLowerCase();
+            const tagsExact = cmd.tags.map(t => t.toLowerCase());
+            return terms.every(term => {
+                if (cmdExact.includes(term) || descExact.includes(term) || tagsExact.some(t => t.includes(term))) return true;
+                return fuzzyMatch(cmdText, term);
+            });
+        }
+
+        function filterCommandsList() {
+            const rawSearch = document.getElementById('searchInput').value;
+            const searchTerm = rawSearch.toLowerCase().trim();
+            const searchTerms = searchTerm ? searchTerm.split(/\s+/).filter(t => t) : [];
+            let result = commands.filter(cmd => {
+                const matchMain = currentMainCategory === 'all' || cmd.mainCategory === currentMainCategory;
+                const matchSub = currentSubCategory === 'all' || cmd.subCategory === currentSubCategory;
+                const matchSearch = !searchTerm || matchesSearch(cmd, searchTerms);
+                const matchFav = !showFavoritesOnly || cmd.favorite;
+                return matchMain && matchSub && matchSearch && matchFav;
+            });
+
+            const sortBy = document.getElementById('sortSelect').value;
+            switch (sortBy) {
+                case 'freq':
+                    result.sort((a, b) => (b.copyCount || 0) - (a.copyCount || 0));
+                    break;
+                case 'recent':
+                    result.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
+                    break;
+                case 'name':
+                    result.sort((a, b) => a.command.localeCompare(b.command));
+                    break;
+            }
+            return result;
+        }
+
+        function selectMainCategory(category) {
+            currentMainCategory = category;
+            currentSubCategory = 'all';
+            
+            document.querySelectorAll('.main-category').forEach(tag => {
+                tag.classList.toggle('active', tag.dataset.category === category);
+            });
+            
+            renderSubCategories();
+            filterCommands();
+        }
+
+        function selectSubCategory(category) {
+            currentSubCategory = category;
+            
+            document.querySelectorAll('.sub-category').forEach(tag => {
+                tag.classList.toggle('active', tag.dataset.category === category);
+            });
+            
+            filterCommands();
+        }
+
+        function renderSubCategories() {
+            const container = document.getElementById('subCategories');
+            container.innerHTML = '';
+            
+            if (currentMainCategory === 'all') {
+                container.innerHTML = '<div class="sub-category active" data-category="all" onclick="selectSubCategory(\'all\')">全部子分类</div>';
+                return;
+            }
+            
+            const subs = ['全部', ...categoryStructure[currentMainCategory] || []];
+            subs.forEach(sub => {
+                const tag = document.createElement('div');
+                tag.className = 'sub-category' + (sub === '全部' ? ' active' : '');
+                tag.dataset.category = sub === '全部' ? 'all' : sub;
+                tag.textContent = sub;
+                tag.onclick = () => selectSubCategory(sub === '全部' ? 'all' : sub);
+                container.appendChild(tag);
+            });
+        }
+
+        function renderPagination(total) {
+            const container = document.getElementById('pagination');
+            const totalPages = Math.ceil(total / pageSize);
+            if (totalPages <= 1) { container.innerHTML = ''; return; }
+
+            let html = '';
+            if (currentPage > 1) {
+                html += `<button class="page-btn" onclick="goToPage(${currentPage - 1})">‹</button>`;
+            }
+            html += `<span class="page-info">${currentPage} / ${totalPages}</span>`;
+            for (let i = 1; i <= totalPages; i++) {
+                if (i === 1 || i === totalPages || Math.abs(i - currentPage) <= 2) {
+                    html += `<button class="page-btn${i === currentPage ? ' active' : ''}" onclick="goToPage(${i})">${i}</button>`;
+                } else if (Math.abs(i - currentPage) === 3) {
+                    html += `<span class="page-info">…</span>`;
+                }
+            }
+            if (currentPage < totalPages) {
+                html += `<button class="page-btn" onclick="goToPage(${currentPage + 1})">›</button>`;
+            }
+            container.innerHTML = html;
+        }
+
+        function goToPage(page) {
+            currentPage = page;
+            renderCommands(currentFilteredList);
+            updateStats(currentFilteredList);
+            document.getElementById('commandsGrid').scrollIntoView({ behavior: 'smooth', block: 'start' });
+        }
+
+        function filterCommands() {
+            currentFilteredList = filterCommandsList();
+            currentPage = 1;
+            renderCommands(currentFilteredList);
+            updateStats(currentFilteredList);
+        }
+
+        function getBadgeClass(mainCategory) {
+            switch(mainCategory) {
+                case 'Linux': return 'badge-linux';
+                case 'Windows': return 'badge-windows';
+                case '渗透测试': return 'badge-pentest';
+                case '开发工具': return 'badge-dev';
+                default: return 'badge-linux';
+            }
+        }
+
+        function renderCommands(list) {
+            const grid = document.getElementById('commandsGrid');
+            const searchTerm = document.getElementById('searchInput').value.trim().toLowerCase();
+            const total = list.length;
+            const start = (currentPage - 1) * pageSize;
+            const pageItems = list.slice(start, start + pageSize);
+
+            if (list.length === 0) {
+                const hasSearch = document.getElementById('searchInput').value.trim();
+                const hasFilter = currentMainCategory !== 'all' || currentSubCategory !== 'all' || showFavoritesOnly;
+                if (commands.length === 0) {
+                    grid.innerHTML = `<div class="empty-state">
+                           <div class="empty-state-icon">📭</div>
+                           <h3>暂无命令</h3>
+                           <p>点击上方按钮添加你的第一个命令吧！</p>
+                        </div>`;
+                } else {
+                    grid.innerHTML = `<div class="empty-state">
+                           <div class="empty-state-icon">🔍</div>
+                           <h3>没有匹配的命令</h3>
+                           <p>${hasSearch ? '尝试修改搜索关键词' : ''}${hasSearch && hasFilter ? ' 或 ' : ''}${hasFilter ? '换个分类/筛选条件试试' : ''}</p>
+                        </div>`;
+                }
+                renderPagination(0);
+               return;
+           }
+
+             function hl(text) {
+                if (!searchTerm) return escapeHtml(text);
+                let escaped = escapeHtml(text);
+                const terms = searchTerm.split(/\s+/).filter(t => t);
+                terms.forEach(term => {
+                    const escapedTerm = term.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+                    const regex = new RegExp(`(${escapedTerm})`, 'gi');
+                    escaped = escaped.replace(regex, '<mark class="highlight">$1</mark>');
+                });
+                return escaped;
+            }
+
+            grid.innerHTML = pageItems.map(cmd => `
+                <div class="command-card${cmd.favorite ? ' favorited' : ''}" data-id="${cmd.id}">
+                    <div class="card-row">
+                        <input type="checkbox" class="card-checkbox" data-id="${cmd.id}" onchange="updateBatchBar()">
+                        <div class="card-body">
+                    <div class="command-header">
+                        <div>
+                            <span class="category-badge ${getBadgeClass(cmd.mainCategory)}">${cmd.mainCategory}</span>
+                            <span class="sub-badge">${cmd.subCategory}</span>
+                        </div>
+                        <button class="btn-star${cmd.favorite ? ' favorited' : ''}" onclick="event.stopPropagation();toggleFavorite('${cmd.id}')" title="${cmd.favorite ? '取消收藏' : '收藏'}">
+                            ${cmd.favorite ? '⭐' : '☆'}
+                        </button>
+                    </div>
+                     <div class="command-code" onclick="copyCommand('${cmd.id}', this)" title="点击复制命令">${hl(cmd.command)}</div>
+                   <div class="description-wrapper">
+                        <p class="command-description" id="desc-${cmd.id}">${hl(cmd.description)}</p>
+                       <button class="description-expand-btn" onclick="toggleDescription('${cmd.id}')" id="expand-btn-${cmd.id}" style="display:none">展开</button>
+                   </div>
+                    <div class="tags">
+                         ${cmd.tags.map(tag => `<span class="tag">${hl(tag)}</span>`).join('')}
+                         <span class="tag" style="background:#1e3a8a;color:#93c5fd" title="复制次数">📋 ${cmd.copyCount || 0}</span>
+                    </div>
+                    <div class="card-actions">
+                         <button class="btn btn-copy" onclick="copyCommand('${cmd.id}', this)">📋 复制</button>
+                        <button class="btn btn-edit" onclick="editCommand('${cmd.id}')">✏️ 编辑</button>
+                        <button class="btn btn-delete" onclick="deleteCommand('${cmd.id}')">🗑️ 删除</button>
+                    </div>
+                        </div>
+                    </div>
+                </div>
+           `).join('');
+            renderPagination(total);
+            // Only show expand buttons for descriptions that overflow
+             pageItems.forEach(cmd => {
+                 const desc = document.getElementById('desc-' + cmd.id);
+                 const btn = document.getElementById('expand-btn-' + cmd.id);
+                 if (desc && btn && desc.scrollHeight > desc.clientHeight) {
+                     btn.style.display = '';
+                 }
+             });
+        }
+
+        function toggleDescription(id) {
+            const desc = document.getElementById('desc-' + id);
+            const btn = document.getElementById('expand-btn-' + id);
+            if (desc.classList.contains('expanded')) {
+                desc.classList.remove('expanded');
+                btn.textContent = '展开';
+            } else {
+                desc.classList.add('expanded');
+                btn.textContent = '收起';
+            }
+        }
+
+        function escapeHtml(text) {
+            const div = document.createElement('div');
+            div.textContent = text;
+            return div.innerHTML;
+        }
+
+        function updateSubCategoriesOptions(mainCat) {
+            const subInput = document.getElementById('subCategoryInput');
+            const subList = document.getElementById('subCategoryList');
+            
+            subInput.value = '';
+            subList.innerHTML = '';
+            
+            const subs = categoryStructure[mainCat] || [];
+            subs.forEach(sub => {
+                const option = document.createElement('option');
+                option.value = sub;
+                subList.appendChild(option);
+            });
+        }
+        
+        function addNewSubCategory(mainCat, subCategory) {
+            if (!categoryStructure[mainCat]) {
+                categoryStructure[mainCat] = [];
+            }
+            if (!categoryStructure[mainCat].includes(subCategory)) {
+                categoryStructure[mainCat].push(subCategory);
+                // 将"其他"移动到最后
+                const otherIndex = categoryStructure[mainCat].indexOf('其他');
+                if (otherIndex !== -1 && otherIndex !== categoryStructure[mainCat].length - 1) {
+                    categoryStructure[mainCat].splice(otherIndex, 1);
+                    categoryStructure[mainCat].push('其他');
+                }
+                saveCategoryStructure();
+                renderSubCategories();
+            }
+        }
+
+        function openModal(id = null) {
+            const modal = document.getElementById('commandModal');
+            const title = document.getElementById('modalTitle');
+            const form = document.getElementById('commandForm');
+            
+            form.reset();
+            document.getElementById('commandId').value = '';
+            
+            const mainCat = document.getElementById('mainCategoryInput').value;
+            updateSubCategoriesOptions(mainCat);
+            
+            if (id) {
+                const cmd = commands.find(c => c.id === id);
+                if (cmd) {
+                    title.textContent = '编辑命令';
+                    document.getElementById('commandId').value = cmd.id;
+                    document.getElementById('commandInput').value = cmd.command;
+                    document.getElementById('descriptionInput').value = cmd.description;
+                    document.getElementById('mainCategoryInput').value = cmd.mainCategory;
+                    updateSubCategoriesOptions(cmd.mainCategory);
+                    document.getElementById('subCategoryInput').value = cmd.subCategory;
+                    document.getElementById('tagsInput').value = cmd.tags.join(', ');
+                }
+            } else {
+                title.textContent = '添加命令';
+                document.getElementById('mainCategoryInput').value = 'Linux';
+                updateSubCategoriesOptions('Linux');
+            }
+            
+            modal.classList.add('active');
+        }
+        
+        function closeModal() {
+            document.getElementById('commandModal').classList.remove('active');
+        }
+
+        function saveCommand(e) {
+            e.preventDefault();
+            
+            const id = document.getElementById('commandId').value;
+            const command = document.getElementById('commandInput').value.trim();
+            const description = document.getElementById('descriptionInput').value.trim();
+            const mainCategory = document.getElementById('mainCategoryInput').value;
+            const subCategory = document.getElementById('subCategoryInput').value.trim();
+            const tags = document.getElementById('tagsInput').value.split(',').map(t => t.trim()).filter(t => t);
+            if (!command) { showToast('请输入命令'); return; }
+            if (!description) { showToast('请输入说明'); return; }
+            
+            if (!subCategory) {
+                showToast('请输入子分类名称');
+                return;
+            }
+            
+            addNewSubCategory(mainCategory, subCategory);
+            
+            if (id) {
+                const index = commands.findIndex(c => c.id === id);
+                if (index !== -1) {
+                    commands[index] = {
+                        ...commands[index],
+                        command,
+                        description,
+                        mainCategory,
+                        subCategory,
+                        tags,
+                        updatedAt: new Date().toISOString()
+                    };
+                }
+            } else {
+                commands.unshift({
+                    id: crypto.randomUUID(),
+                    command,
+                    description,
+                    mainCategory,
+                    subCategory,
+                    tags,
+                    createdAt: new Date().toISOString(),
+                    updatedAt: new Date().toISOString()
+                });
+            }
+            
+            saveToStorage();
+            filterCommands();
+            closeModal();
+            showToast(id ? '命令已更新！' : '命令已添加！');
+        }
+
+        function editCommand(id) {
+            openModal(id);
+        }
+
+        function deleteCommand(id) {
+            const index = commands.findIndex(c => c.id === id);
+            if (index === -1) return;
+            const deleted = commands[index];
+            commands.splice(index, 1);
+            saveToStorage();
+            filterCommands();
+            showUndoToast('命令已删除', () => {
+                commands.splice(index, 0, deleted);
+                saveToStorage();
+                filterCommands();
+                showToast('已恢复命令');
+            });
+        }
+
+        function showUndoToast(message, onUndo) {
+            const container = document.getElementById('toastContainer');
+            const toast = document.createElement('div');
+            toast.className = 'toast-item undo-toast';
+            const msgSpan = document.createElement('span');
+            msgSpan.textContent = message;
+            const undoBtn = document.createElement('button');
+            undoBtn.className = 'toast-undo-btn';
+            undoBtn.textContent = '撤销';
+            let undone = false;
+            undoBtn.onclick = () => {
+                if (undone) return;
+                undone = true;
+                onUndo();
+                toast.classList.remove('show');
+                toast.classList.add('fade');
+                setTimeout(() => toast.remove(), 400);
+            };
+            toast.appendChild(msgSpan);
+            toast.appendChild(undoBtn);
+            container.appendChild(toast);
+            requestAnimationFrame(() => toast.classList.add('show'));
+            setTimeout(() => {
+                if (!undone) {
+                    toast.classList.remove('show');
+                    toast.classList.add('fade');
+                    setTimeout(() => toast.remove(), 400);
+                }
+            }, 5000);
+        }
+
+        function copyCommand(id, el) {
+            const cmd = commands.find(c => c.id === id);
+            if (cmd) {
+                if (el) {
+                    if (el.classList.contains('command-code')) {
+                        el.classList.remove('copied');
+                        void el.offsetWidth;
+                        el.classList.add('copied');
+                        setTimeout(() => el.classList.remove('copied'), 600);
+                    } else {
+                        el.textContent = '✓ 已复制';
+                        el.style.background = 'linear-gradient(135deg, #10b981, #059669)';
+                        setTimeout(() => {
+                            el.textContent = '📋 复制';
+                            el.style.background = '';
+                        }, 1500);
+                    }
+                }
+                navigator.clipboard.writeText(cmd.command).then(() => {
+                    showToast('已复制到剪贴板！');
+                }).catch(() => {
+                    const textarea = document.createElement('textarea');
+                    textarea.value = cmd.command;
+                    document.body.appendChild(textarea);
+                    textarea.select();
+                    document.execCommand('copy');
+                    document.body.removeChild(textarea);
+                    showToast('已复制到剪贴板！');
+                });
+                cmd.copyCount = (cmd.copyCount || 0) + 1;
+                saveToStorage();
+            }
+        }
+
+        function showToast(message) {
+            const container = document.getElementById('toastContainer');
+            while (container.children.length >= 5) {
+                const oldest = container.firstElementChild;
+                oldest.classList.remove('show');
+                oldest.classList.add('fade');
+                setTimeout(() => oldest.remove(), 400);
+            }
+            const toast = document.createElement('div');
+            toast.className = 'toast-item';
+            toast.textContent = message;
+            container.appendChild(toast);
+            requestAnimationFrame(() => toast.classList.add('show'));
+            setTimeout(() => {
+                toast.classList.remove('show');
+                toast.classList.add('fade');
+                setTimeout(() => toast.remove(), 400);
+            }, 2500);
+        }
+
+        document.getElementById('commandModal').addEventListener('click', function(e) {
+            if (e.target === this) {
+                closeModal();
+            }
+        });
+
+        function onMainCategoryChange() {
+            const mainCat = document.getElementById('mainCategoryInput').value;
+            updateSubCategoriesOptions(mainCat);
+        }
+
+
+        function closeShortcuts() {
+            document.getElementById('shortcutsOverlay').classList.remove('active');
+        }
+
+        document.addEventListener('keydown', function(e) {
+            if ((e.ctrlKey || e.metaKey) && e.key === 'f') {
+                e.preventDefault();
+                document.getElementById('searchInput').focus();
+            }
+            if (e.key === 'Escape') {
+                const modal = document.getElementById('commandModal');
+                if (modal.classList.contains('active')) closeModal();
+                const shortcuts = document.getElementById('shortcutsOverlay');
+                if (shortcuts.classList.contains('active')) closeShortcuts();
+            }
+            if ((e.key === 'n' || e.key === 'N') && !['INPUT', 'TEXTAREA', 'SELECT'].includes(e.target.tagName)) {
+                if (!document.getElementById('commandModal').classList.contains('active')) {
+                    e.preventDefault();
+                    openModal();
+                }
+            }
+            if (e.key === '?' && !['INPUT', 'TEXTAREA', 'SELECT'].includes(e.target.tagName)) {
+                e.preventDefault();
+                document.getElementById('shortcutsOverlay').classList.toggle('active');
+            }
+        });
+
+        function getSelectedIds() {
+            return Array.from(document.querySelectorAll('.card-checkbox:checked')).map(cb => cb.dataset.id);
+        }
+
+        function updateBatchBar() {
+            const ids = getSelectedIds();
+            const bar = document.getElementById('batchBar');
+            document.getElementById('batchCount').textContent = `已选择 ${ids.length} 项`;
+            bar.classList.toggle('active', ids.length > 0);
+        }
+
+        function selectAll() {
+            const visible = document.querySelectorAll('.commands-grid .command-card');
+            const allChecked = document.querySelectorAll('.card-checkbox:checked').length === visible.length;
+            document.querySelectorAll('.card-checkbox').forEach(cb => cb.checked = !allChecked);
+            updateBatchBar();
+        }
+
+        function batchDelete() {
+            const ids = getSelectedIds();
+            if (!ids.length) return;
+            if (!confirm(`确定删除选中的 ${ids.length} 条命令吗？`)) return;
+            commands = commands.filter(c => !ids.includes(c.id));
+            saveToStorage();
+            filterCommands();
+            showToast(`已删除 ${ids.length} 条命令`);
+        }
+
+        function batchExport() {
+            const ids = getSelectedIds();
+            if (!ids.length) return;
+            const selected = commands.filter(c => ids.includes(c.id));
+            const data = JSON.stringify(selected, null, 2);
+            const blob = new Blob([data], { type: 'application/json' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `selected-commands-${Date.now()}.json`;
+            a.click();
+            URL.revokeObjectURL(url);
+            showToast(`已导出 ${selected.length} 条命令`);
+        }
+
+        function exportData(format) {
+            let content, mime, ext;
+            switch (format) {
+                case 'markdown':
+                    content = '# 命令列表\n\n' + commands.map(c => 
+                        `## [${c.mainCategory}] ${c.command}\n\n- **说明**: ${c.description}\n- **分类**: ${c.mainCategory} > ${c.subCategory}\n- **标签**: ${c.tags.join(', ')}${c.favorite ? '\n- **收藏**: ⭐' : ''}\n- **使用次数**: ${c.copyCount || 0}\n`
+                    ).join('\n');
+                    mime = 'text/markdown';
+                    ext = 'md';
+                    break;
+                case 'csv':
+                    const headers = '命令,说明,主分类,子分类,标签,收藏,使用次数,创建时间';
+                    const rows = commands.map(c => 
+                        `"${c.command.replace(/"/g, '""')}","${c.description.replace(/"/g, '""')}","${c.mainCategory}","${c.subCategory}","${c.tags.join('; ')}","${c.favorite ? '是' : '否'}","${c.copyCount || 0}","${c.createdAt}"`
+                    );
+                    content = '\uFEFF' + headers + '\n' + rows.join('\n');
+                    mime = 'text/csv;charset=utf-8';
+                    ext = 'csv';
+                    break;
+                default:
+                    content = JSON.stringify(commands, null, 2);
+                    mime = 'application/json';
+                    ext = 'json';
+            }
+            const blob = new Blob([content], { type: mime });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `commands-backup.${ext}`;
+            a.click();
+            URL.revokeObjectURL(url);
+            showToast(`已导出 ${commands.length} 条命令 (${format.toUpperCase()})`);
+        }
+
+        function importData(event) {
+            const file = event.target.files[0];
+            if (!file) return;
+            const reader = new FileReader();
+            reader.onload = function(e) {
+                try {
+                    const imported = JSON.parse(e.target.result);
+                    if (!Array.isArray(imported)) throw new Error('Invalid format');
+                    const count = imported.length;
+                    imported.forEach(newCmd => {
+                        if (!commands.find(c => c.id === newCmd.id)) {
+                            commands.push(newCmd);
+                        }
+                    });
+                    saveToStorage();
+                    updateCategoryStructure();
+                    saveCategoryStructure();
+                    filterCommands();
+                    showToast(`已导入 ${count} 条命令！`);
+                } catch (err) {
+                    showToast('导入失败：文件格式不正确');
+                }
+            };
+            reader.readAsText(file);
+            event.target.value = '';
+        }
+
+       init();
+    </script>
+</body>
+</html>
