@@ -37,25 +37,28 @@
 3. 填写 **Token name**（如 `命令管理器`），**Repository access** 选 `Only select repositories` → 选中 `ironmole666/linux-command`
 4. **Permissions** 展开 **Contents** → 选 **Read and write**
 5. 生成并复制 Token
-6. 打开页面，点击统计栏的 `未连接` 状态（或顶部 `☁️ 同步` 按钮）
+6. 打开页面，点击 `🔐 登录管理` → 创建管理员账号 → 登录后点击统计栏的 `未连接` 状态（或顶部 `☁️ 同步` 按钮）
 7. 粘贴 Token → 点击 **测试连接** → **保存并同步**
 
 ### 使用说明
 
+- **访客模式**（默认）：打开页面即可浏览、搜索、复制、导出，无需任何配置
+- **管理员模式**：点击 `🔐 登录管理` → 输入用户名和密码 → 进入管理界面
 - **增删改命令**：自动推送到 GitHub（状态栏显示 `同步中…` → `已同步`）
-- **页面加载**：自动从 GitHub 拉取最新数据
+- **页面加载**：管理员自动从 GitHub API 拉取，访客从 CDN 加载
 - **手动同步**：点击顶部 `☁️ 同步` 按钮或状态栏的 `⟳` 图标
-- **每个浏览器**需要单独配置一次 Token
+- **每个浏览器**需要单独创建一次管理员账号 + 配置一次 Token
 
 ### 工作原理
 
 ```
-浏览器操作 → localStorage（即时） → GitHub API（后台静默）
-                                        ↕
-其他浏览器 ← localStorage（缓存）  ← GitHub API
-```
+访客: 浏览器 → raw.githubusercontent.com CDN（只读，快，无认证）
+管理员: 浏览器 → localStorage → GitHub API（读写，需要 Token）
 
-数据以 JSON 格式存储在仓库 [`data/data.json`](data/data.json) 中，每次同步会自动创建一个 commit。
+                    raw CDN ← GitHub仓库 data/data.json → GitHub API
+                       ↑                                      ↓
+              访客自动读取                               管理员写入/读取
+```
 
 ## 分类结构
 
