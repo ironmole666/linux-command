@@ -986,9 +986,7 @@
 
             if (isAdmin) {
                 updateSyncUI();
-                syncPull().then(() => {
-                    if (getGitHubToken() && getAdminCreds()) syncPush();
-                });
+                syncPull();
             } else {
                 fetchPublicData().then(remoteCommands => {
                     if (remoteCommands && remoteCommands.length > 0 && remoteCommands.length !== commands.length) {
@@ -1217,9 +1215,11 @@
         }
 
         let _syncing = false;
+        let _pendingSync = false;
         async function syncPush() {
             const token = getGitHubToken();
-            if (!token || _syncing) return;
+            if (!token) return;
+            if (_syncing) { _pendingSync = true; return; }
             _syncing = true;
 
             syncStatus = 'syncing';
@@ -1245,8 +1245,14 @@
                 console.error('Sync push error:', err);
                 syncStatus = 'error';
                 showToast('☁️ 同步推送失败: ' + friendlySyncError(err));
+            } finally {
+                _syncing = false;
+                if (_pendingSync) {
+                    _pendingSync = false;
+                    updateSyncUI();
+                    syncPush();
+                }
             }
-            _syncing = false;
             updateSyncUI();
         }
 
