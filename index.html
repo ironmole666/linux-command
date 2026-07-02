@@ -986,6 +986,8 @@
         async function manualSync() {
             const token = getGitHubToken();
             if (!token) { showToast('☁️ 请先配置同步 Token'); openSyncModal(); return; }
+            showToast('☁️ 开始同步…');
+            await syncPull();
             await syncPush();
         }
 

@@ -14,6 +14,7 @@
 - **键盘快捷键** — 按 `?` 查看所有快捷键
 - **分页浏览** — 每页 30 条，平滑翻页
 - **暗色主题** — 护眼深色 UI，自定义滚动条
+- **☁️ 云同步** — 通过 GitHub API 多设备数据同步
 
 ## 快速开始
 
@@ -24,6 +25,37 @@
 ## 数据备份
 
 点击顶部 **JSON / MD / CSV** 按钮可导出数据，**导入**按钮可恢复之前导出的 JSON 文件。
+
+## ☁️ 云同步（可选）
+
+数据默认存在当前浏览器 `localStorage` 中，如需在多个电脑/浏览器间共享数据，可使用 GitHub 云同步：
+
+### 首次配置
+
+1. 打开 GitHub [Fine-grained Token 页面](https://github.com/settings/tokens?type=beta)
+2. 点击 **Generate new token** → **Fine-grained token**
+3. 填写 **Token name**（如 `命令管理器`），**Repository access** 选 `Only select repositories` → 选中 `ironmole666/linux-command`
+4. **Permissions** 展开 **Contents** → 选 **Read and write**
+5. 生成并复制 Token
+6. 打开页面，点击统计栏的 `未连接` 状态（或顶部 `☁️ 同步` 按钮）
+7. 粘贴 Token → 点击 **测试连接** → **保存并同步**
+
+### 使用说明
+
+- **增删改命令**：自动推送到 GitHub（状态栏显示 `同步中…` → `已同步`）
+- **页面加载**：自动从 GitHub 拉取最新数据
+- **手动同步**：点击顶部 `☁️ 同步` 按钮或状态栏的 `⟳` 图标
+- **每个浏览器**需要单独配置一次 Token
+
+### 工作原理
+
+```
+浏览器操作 → localStorage（即时） → GitHub API（后台静默）
+                                        ↕
+其他浏览器 ← localStorage（缓存）  ← GitHub API
+```
+
+数据以 JSON 格式存储在仓库 [`data/data.json`](data/data.json) 中，每次同步会自动创建一个 commit。
 
 ## 分类结构
 
