@@ -42,8 +42,8 @@
         .stats-bar { display: flex; gap: 16px; margin-bottom: 16px; flex-wrap: wrap; }
         .stat-item { background: #334155; padding: 8px 16px; border-radius: 8px; font-size: 0.9rem; display: flex; align-items: center; gap: 6px; }
         .stat-item strong { color: #0ea5e9; }
-        .stat-item:first-child::before { content: "📦"; font-size: 0.85rem; }
-        .stat-item:last-child::before { content: "👁️"; font-size: 0.85rem; }
+        .stat-item:nth-child(1)::before { content: "📦"; font-size: 0.85rem; }
+        .stat-item:nth-child(2)::before { content: "👁️"; font-size: 0.85rem; }
         
         .search-wrapper { position: relative; }
         .search-wrapper::before {
@@ -433,6 +433,7 @@
                         <button class="btn btn-outline btn-sm" onclick="exportData('csv')">CSV</button>
                     </div>
                     <button class="btn btn-outline" onclick="document.getElementById('importInput').click()">📥 导入</button>
+                    <button class="btn btn-outline" onclick="manualSync()" title="手动同步到 GitHub">☁️ 同步</button>
                     <input type="file" id="importInput" accept=".json" style="display:none" onchange="importData(event)">
                 </div>
             </div>
@@ -442,7 +443,7 @@
             <div class="stats-bar">
                 <div class="stat-item">总命令: <strong id="totalCount">0</strong></div>
                 <div class="stat-item">当前显示: <strong id="currentCount">0</strong></div>
-                <div class="stat-item sync-status" id="syncStatus" onclick="openSyncModal()" title="点击配置云同步"><span class="sync-dot disconnected" id="syncDot"></span><span id="syncStatusText">未连接</span></div>
+                <div class="stat-item sync-status" id="syncStatus" onclick="openSyncModal()" title="点击配置云同步"><span class="sync-dot disconnected" id="syncDot"></span><span id="syncStatusText">未连接</span><span style="margin-left:6px;cursor:pointer;opacity:0.6;transition:opacity 0.2s" onclick="event.stopPropagation();manualSync()" onmouseover="this.style.opacity=1" onmouseout="this.style.opacity=0.6" title="手动同步">⟳</span></div>
             </div>
             <div class="search-wrapper"><input type="text" class="search-input" id="searchInput" placeholder="搜索命令、描述或标签（支持空格多词 + 模糊匹配）..." oninput="onSearchInput()"></div>
             
@@ -871,7 +872,11 @@
                 },
                 body: JSON.stringify(body)
             });
-            if (!res.ok) throw new Error(`HTTP ${res.status}`);
+            if (!res.ok) {
+                let details = '';
+                try { details = (await res.json()).message || ''; } catch(e) {}
+                throw new Error(`HTTP ${res.status}${details ? ': ' + details : ''}`);
+            }
         }
 
         function updateSyncUI() {
@@ -907,25 +912,33 @@
                 const result = await fetchGitHubFile(token);
                 if (result && result.content && result.content.commands) {
                     const { commands: ghCommands, updatedAt } = result.content;
-                    const lastSyncAt = localStorage.getItem('lastSyncAt');
-                    if (!lastSyncAt || new Date(updatedAt) > new Date(lastSyncAt)) {
-                        commands = ghCommands.map(c => ({
-                            ...c,
-                            favorite: c.favorite || false,
-                            copyCount: c.copyCount || 0
-                        }));
-                        saveToStorage();
-                        updateCategoryStructure();
-                        saveCategoryStructure();
-                        renderSubCategories();
-                        filterCommands();
+                    if (ghCommands.length > 0) {
+                        const lastSyncAt = localStorage.getItem('lastSyncAt');
+                        if (!lastSyncAt || new Date(updatedAt) > new Date(lastSyncAt)) {
+                            commands = ghCommands.map(c => ({
+                                ...c,
+                                favorite: c.favorite || false,
+                                copyCount: c.copyCount || 0
+                            }));
+                            saveToStorage();
+                            updateCategoryStructure();
+                            saveCategoryStructure();
+                            renderSubCategories();
+                            filterCommands();
+                            showToast('☁️ 已同步云端数据');
+                        }
+                        syncStatus = 'synced';
+                        localStorage.setItem('lastSyncAt', new Date().toISOString());
+                    } else {
+                        syncStatus = 'synced';
                     }
+                } else {
+                    syncStatus = 'disconnected';
                 }
-                syncStatus = 'synced';
-                localStorage.setItem('lastSyncAt', new Date().toISOString());
             } catch (err) {
                 console.error('Sync pull error:', err);
                 syncStatus = 'error';
+                showToast('☁️ 同步拉取失败: ' + err.message);
             }
             updateSyncUI();
         }
@@ -946,8 +959,16 @@
             } catch (err) {
                 console.error('Sync push error:', err);
                 syncStatus = 'error';
+                showToast('☁️ 同步推送失败: ' + err.message);
             }
             updateSyncUI();
+        }
+
+        async function manualSync() {
+            if (syncStatus === 'syncing') return;
+            const token = getGitHubToken();
+            if (!token) { showToast('☁️ 请先配置同步 Token'); openSyncModal(); return; }
+            await syncPush();
         }
 
         async function testGitHubConnection() {
@@ -1382,6 +1403,7 @@
         function deleteCommand(id) {
             const index = commands.findIndex(c => c.id === id);
             if (index === -1) return;
+            if (!confirm('确定删除此命令？')) return;
             const deleted = commands[index];
             commands.splice(index, 1);
             saveToStorage();
