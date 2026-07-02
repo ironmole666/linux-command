@@ -461,7 +461,7 @@
                 </div>
                 <div class="stat-item sync-status admin-only" id="syncStatus" onclick="openSyncModal()" title="点击配置云同步"><span class="sync-dot disconnected" id="syncDot"></span><span id="syncStatusText">未连接</span><span style="margin-left:6px;cursor:pointer;opacity:0.6;transition:opacity 0.2s" onclick="event.stopPropagation();manualSync()" onmouseover="this.style.opacity=1" onmouseout="this.style.opacity=0.6" title="手动同步">⟳</span></div>
             </div>
-            <div class="search-wrapper"><input type="text" class="search-input" id="searchInput" placeholder="搜索命令、描述或标签（支持空格多词 + 模糊匹配）..." oninput="onSearchInput()"></div>
+            <div class="search-wrapper"><input type="text" class="search-input" id="searchInput" placeholder="搜索命令、描述或标签（支持空格多词 + 模糊匹配）..." oninput="onSearchInput()" autocomplete="off">
             
             <div class="category-container" id="mainCategories">
                 <div class="main-category all active" data-category="all" onclick="selectMainCategory('all')">全部</div>
@@ -566,7 +566,7 @@
                 <p style="color:#94a3b8;font-size:0.9rem;margin-bottom:16px">首次使用，请创建管理员账号：</p>
                 <div class="form-group">
                     <label>用户名</label>
-                    <input type="text" id="setupUsername" placeholder="admin">
+                    <input type="text" id="setupUsername" placeholder="输入用户名" autocomplete="off">
                 </div>
                 <div class="form-group">
                     <label>密码</label>
