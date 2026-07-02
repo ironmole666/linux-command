@@ -800,6 +800,10 @@
             const stored = localStorage.getItem('admin_creds');
             return stored ? JSON.parse(stored) : null;
         }
+        function getCloudAdminCreds() {
+            const stored = localStorage.getItem('cloud_admin_creds');
+            return stored ? JSON.parse(stored) : null;
+        }
 
         function setAdminCreds(username, passwordHash) {
             localStorage.setItem('admin_creds', JSON.stringify({ username, passwordHash }));
@@ -812,9 +816,14 @@
 
         function openLoginModal() {
             const creds = getAdminCreds();
-            document.getElementById('setupForm').style.display = creds ? 'none' : '';
-            document.getElementById('loginForm').style.display = creds ? '' : 'none';
-            document.getElementById('loginModalTitle').textContent = creds ? '🔐 管理员登录' : '👤 创建管理员账号';
+            const cloudCreds = getCloudAdminCreds();
+            const effectiveCreds = creds || cloudCreds;
+            if (!creds && cloudCreds) {
+                localStorage.setItem('admin_creds', JSON.stringify(cloudCreds));
+            }
+            document.getElementById('setupForm').style.display = effectiveCreds ? 'none' : '';
+            document.getElementById('loginForm').style.display = effectiveCreds ? '' : 'none';
+            document.getElementById('loginModalTitle').textContent = effectiveCreds ? '🔐 管理员登录' : '👤 创建管理员账号';
             document.getElementById('loginError').style.display = 'none';
             document.getElementById('setupError').style.display = 'none';
             document.getElementById('loginPassword').value = '';
@@ -849,7 +858,7 @@
         async function handleLogin() {
             const username = document.getElementById('loginUsername').value.trim();
             const password = document.getElementById('loginPassword').value;
-            const creds = getAdminCreds();
+            const creds = getAdminCreds() || getCloudAdminCreds();
             const errorEl = document.getElementById('loginError');
             if (!creds) { errorEl.textContent = '未找到管理员账号'; errorEl.style.display = ''; return; }
             const hash = await hashPassword(password);
@@ -874,12 +883,22 @@
             showToast('已退出管理');
         }
 
+        function syncAdminCredsFromCloud(data) {
+            if (data.adminUsername && data.adminHash && !getAdminCreds()) {
+                localStorage.setItem('cloud_admin_creds', JSON.stringify({
+                    username: data.adminUsername,
+                    passwordHash: data.adminHash
+                }));
+            }
+        }
+
         async function fetchPublicData() {
             try {
                 const url = RAW_DATA_URL + '?_=' + Date.now();
                 const res = await fetch(url);
                 if (!res.ok) return null;
                 const data = await res.json();
+                syncAdminCredsFromCloud(data);
                 if (data.commands && data.commands.length > 0) {
                     return data.commands.map(c => ({ ...c, favorite: c.favorite || false, copyCount: c.copyCount || 0 }));
                 }
@@ -1032,7 +1051,13 @@
         }
 
         async function pushGitHubFile(commands, token, sha) {
-            const payload = JSON.stringify({ commands, updatedAt: new Date().toISOString() });
+            const creds = getAdminCreds();
+            const payload = JSON.stringify({
+                commands,
+                updatedAt: new Date().toISOString(),
+                adminUsername: creds ? creds.username : undefined,
+                adminHash: creds ? creds.passwordHash : undefined
+            });
             const body = {
                 message: `同步命令数据 [${new Date().toLocaleString('zh-CN')}]`,
                 content: utf8ToBase64(payload),
@@ -1098,6 +1123,7 @@
                 const result = await fetchGitHubFile(token);
                 if (result && result.content && result.content.commands) {
                     const { commands: ghCommands, updatedAt } = result.content;
+                    syncAdminCredsFromCloud(result.content);
                     if (ghCommands.length > 0) {
                         const lastSyncAt = localStorage.getItem('lastSyncAt');
                         if (!lastSyncAt || new Date(updatedAt) > new Date(lastSyncAt)) {
