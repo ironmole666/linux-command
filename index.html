@@ -835,15 +835,11 @@
         }
 
         async function fetchGitHubFile(token) {
-            const ts = Date.now();
-            const url = `https://api.github.com/repos/${GITHUB_OWNER}/${GITHUB_REPO}/contents/${GITHUB_PATH}?ref=${GITHUB_BRANCH}&_=${ts}`;
+            const url = `https://api.github.com/repos/${GITHUB_OWNER}/${GITHUB_REPO}/contents/${GITHUB_PATH}?ref=${GITHUB_BRANCH}&_=${Date.now()}`;
             const res = await fetch(url, {
-                cache: 'no-cache',
                 headers: {
                     Authorization: `Bearer ${token}`,
-                    Accept: 'application/vnd.github.v3+json',
-                    'User-Agent': 'command-manager',
-                    'Cache-Control': 'no-cache'
+                    Accept: 'application/vnd.github.v3+json'
                 }
             });
             if (res.status === 404) return null;
@@ -864,16 +860,13 @@
             };
             if (sha) body.sha = sha;
 
-            const url = `https://api.github.com/repos/${GITHUB_OWNER}/${GITHUB_REPO}/contents/${GITHUB_PATH}`;
+            const url = `https://api.github.com/repos/${GITHUB_OWNER}/${GITHUB_REPO}/contents/${GITHUB_PATH}?_=${Date.now()}`;
             const res = await fetch(url, {
                 method: 'PUT',
-                cache: 'no-cache',
                 headers: {
                     Authorization: `Bearer ${token}`,
                     'Content-Type': 'application/json',
-                    Accept: 'application/vnd.github.v3+json',
-                    'User-Agent': 'command-manager',
-                    'Cache-Control': 'no-cache'
+                    Accept: 'application/vnd.github.v3+json'
                 },
                 body: JSON.stringify(body)
             });
@@ -904,6 +897,14 @@
                     text.textContent = '同步失败';
                     break;
             }
+        }
+
+        function friendlySyncError(err) {
+            const msg = err.message || '';
+            if (msg.includes('Failed to fetch') || msg.includes('NetworkError') || msg.includes('NetworkError')) {
+                return '无法连接 GitHub API，请检查：\n1. 广告拦截插件是否拦截了 api.github.com\n2. 网络是否正常\n3. 如果使用 Brave/Firefox，尝试关闭增强隐私保护';
+            }
+            return msg;
         }
 
         async function syncPull() {
@@ -943,7 +944,7 @@
             } catch (err) {
                 console.error('Sync pull error:', err);
                 syncStatus = 'error';
-                showToast('☁️ 同步拉取失败: ' + err.message);
+                showToast('☁️ 同步拉取失败: ' + friendlySyncError(err));
             }
             updateSyncUI();
         }
@@ -976,7 +977,7 @@
             } catch (err) {
                 console.error('Sync push error:', err);
                 syncStatus = 'error';
-                showToast('☁️ 同步推送失败: ' + err.message);
+                showToast('☁️ 同步推送失败: ' + friendlySyncError(err));
             }
             _syncing = false;
             updateSyncUI();
@@ -1001,7 +1002,7 @@
                     resultEl.innerHTML = '<span style="color:#10b981">✅ 连接成功！首次同步时将自动创建数据文件</span>';
                 }
             } catch (err) {
-                resultEl.innerHTML = `<span style="color:#ef4444">❌ 连接失败：${err.message}</span>`;
+                resultEl.innerHTML = `<span style="color:#ef4444">❌ ${friendlySyncError(err)}</span>`;
             }
         }
 
