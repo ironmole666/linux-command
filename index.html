@@ -835,12 +835,15 @@
         }
 
         async function fetchGitHubFile(token) {
-            const url = `https://api.github.com/repos/${GITHUB_OWNER}/${GITHUB_REPO}/contents/${GITHUB_PATH}?ref=${GITHUB_BRANCH}`;
+            const ts = Date.now();
+            const url = `https://api.github.com/repos/${GITHUB_OWNER}/${GITHUB_REPO}/contents/${GITHUB_PATH}?ref=${GITHUB_BRANCH}&_=${ts}`;
             const res = await fetch(url, {
+                cache: 'no-cache',
                 headers: {
                     Authorization: `Bearer ${token}`,
                     Accept: 'application/vnd.github.v3+json',
-                    'User-Agent': 'command-manager'
+                    'User-Agent': 'command-manager',
+                    'Cache-Control': 'no-cache'
                 }
             });
             if (res.status === 404) return null;
@@ -864,11 +867,13 @@
             const url = `https://api.github.com/repos/${GITHUB_OWNER}/${GITHUB_REPO}/contents/${GITHUB_PATH}`;
             const res = await fetch(url, {
                 method: 'PUT',
+                cache: 'no-cache',
                 headers: {
                     Authorization: `Bearer ${token}`,
                     'Content-Type': 'application/json',
                     Accept: 'application/vnd.github.v3+json',
-                    'User-Agent': 'command-manager'
+                    'User-Agent': 'command-manager',
+                    'Cache-Control': 'no-cache'
                 },
                 body: JSON.stringify(body)
             });
@@ -943,17 +948,29 @@
             updateSyncUI();
         }
 
+        let _syncing = false;
         async function syncPush() {
             const token = getGitHubToken();
-            if (!token) return;
+            if (!token || _syncing) return;
+            _syncing = true;
 
             syncStatus = 'syncing';
             updateSyncUI();
 
             try {
-                const current = await fetchGitHubFile(token);
-                const sha = current && current.sha ? current.sha : undefined;
-                await pushGitHubFile(commands, token, sha);
+                for (let retry = 0; retry < 3; retry++) {
+                    const current = await fetchGitHubFile(token);
+                    const sha = current && current.sha ? current.sha : undefined;
+                    try {
+                        await pushGitHubFile(commands, token, sha);
+                        break;
+                    } catch (e) {
+                        if (retry < 2 && e.message.includes('409')) {
+                            continue;
+                        }
+                        throw e;
+                    }
+                }
                 syncStatus = 'synced';
                 localStorage.setItem('lastSyncAt', new Date().toISOString());
             } catch (err) {
@@ -961,11 +978,11 @@
                 syncStatus = 'error';
                 showToast('☁️ 同步推送失败: ' + err.message);
             }
+            _syncing = false;
             updateSyncUI();
         }
 
         async function manualSync() {
-            if (syncStatus === 'syncing') return;
             const token = getGitHubToken();
             if (!token) { showToast('☁️ 请先配置同步 Token'); openSyncModal(); return; }
             await syncPush();
