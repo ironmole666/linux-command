@@ -415,6 +415,7 @@
         .sync-status .sync-dot.syncing { background: #f59e0b; animation: syncPulse 0.8s infinite; }
         .sync-status .sync-dot.synced { background: #10b981; }
         .sync-status .sync-dot.error { background: #ef4444; }
+        .sync-status .sync-dot.conflict { background: #f97316; }
         @keyframes syncPulse {
             0%, 100% { opacity: 1; }
             50% { opacity: 0.3; }
@@ -466,7 +467,9 @@
                 </div>
                 <div class="stat-item sync-status admin-only" id="syncStatus" onclick="openSyncModal()" title="点击配置云同步"><span class="sync-dot disconnected" id="syncDot"></span><span id="syncStatusText">未连接</span><span style="margin-left:6px;cursor:pointer;opacity:0.6;transition:opacity 0.2s" onclick="event.stopPropagation();manualSync()" onmouseover="this.style.opacity=1" onmouseout="this.style.opacity=0.6" title="手动同步">⟳</span></div>
             </div>
-            <div class="search-wrapper"><input type="search" class="search-input" id="searchInput" placeholder="搜索命令、描述或标签（支持空格多词 + 模糊匹配）..." oninput="onSearchInput()" autocomplete="off">
+            <div class="search-wrapper">
+                <input type="search" class="search-input" id="searchInput" placeholder="搜索命令、描述或标签（支持空格多词 + 模糊匹配）..." oninput="onSearchInput()" autocomplete="off">
+            </div>
             
             <div class="category-container" id="mainCategories">
                 <div class="main-category all active" data-category="all" onclick="selectMainCategory('all')">全部</div>
@@ -593,7 +596,7 @@
                 </div>
                 <div class="form-group">
                     <label>密码</label>
-                    <input type="password" id="setupPassword" placeholder="至少 6 位" autocomplete="new-password">
+                    <input type="password" id="setupPassword" placeholder="至少 8 位" autocomplete="new-password">
                 </div>
                 <div class="form-group">
                     <label>确认密码</label>
@@ -620,7 +623,7 @@
             </div>
             <p style="font-size:0.85rem;color:#94a3b8;margin-bottom:16px;line-height:1.5">
                 需要 Fine-grained token，仓库权限选择 <strong>Contents (Read and write)</strong>。<br>
-                <a class="sync-link" href="https://github.com/settings/tokens?type=beta" target="_blank">去 GitHub 创建 Token →</a>
+                <a class="sync-link" href="https://github.com/settings/tokens?type=beta" target="_blank" rel="noopener noreferrer">去 GitHub 创建 Token →</a>
             </p>
             <div id="syncTestResult" style="margin-bottom:12px;font-size:0.9rem;min-height:1.2em"></div>
             <div class="form-actions">
@@ -799,6 +802,49 @@
         const RAW_DATA_URL = 'https://raw.githubusercontent.com/ironmole666/linux-command/main/data/data.json';
         let isAdmin = false;
 
+        function safeJsonParse(value, fallback = null) {
+            if (!value) return fallback;
+            try {
+                return JSON.parse(value);
+            } catch (error) {
+                console.warn('忽略损坏的本地数据:', error);
+                return fallback;
+            }
+        }
+
+        function normalizeCommand(raw, index = 0) {
+            if (!raw || typeof raw !== 'object' || Array.isArray(raw)) {
+                throw new Error(`第 ${index + 1} 条命令不是对象`);
+            }
+            const stringFields = ['id', 'command', 'description', 'mainCategory', 'subCategory'];
+            stringFields.forEach(field => {
+                if (typeof raw[field] !== 'string' || !raw[field].trim()) {
+                    throw new Error(`第 ${index + 1} 条命令缺少有效的 ${field}`);
+                }
+            });
+            if (!Array.isArray(raw.tags) || raw.tags.some(tag => typeof tag !== 'string')) {
+                throw new Error(`第 ${index + 1} 条命令的 tags 必须是字符串数组`);
+            }
+            return {
+                ...raw,
+                favorite: raw.favorite === true,
+                copyCount: Number.isFinite(Number(raw.copyCount)) ? Math.max(0, Number(raw.copyCount)) : 0
+            };
+        }
+
+        function normalizeCommands(rawCommands) {
+            if (!Array.isArray(rawCommands)) throw new Error('commands 必须是数组');
+            const seenIds = new Set();
+            return rawCommands.map((raw, index) => {
+                const command = normalizeCommand(raw, index);
+                if (seenIds.has(command.id)) throw new Error(`命令 ID 重复: ${command.id}`);
+                seenIds.add(command.id);
+                return command;
+            });
+        }
+
+        const PASSWORD_ITERATIONS = 210000;
+
         async function hashPassword(password) {
             const encoder = new TextEncoder();
             const data = encoder.encode(password);
@@ -806,17 +852,49 @@
             return Array.from(new Uint8Array(hash)).map(b => b.toString(16).padStart(2, '0')).join('');
         }
 
-        function getAdminCreds() {
-            const stored = localStorage.getItem('admin_creds');
-            return stored ? JSON.parse(stored) : null;
-        }
-        function getCloudAdminCreds() {
-            const stored = localStorage.getItem('cloud_admin_creds');
-            return stored ? JSON.parse(stored) : null;
+        function bytesToBase64(bytes) {
+            return btoa(String.fromCharCode(...bytes));
         }
 
-        function setAdminCreds(username, passwordHash) {
-            localStorage.setItem('admin_creds', JSON.stringify({ username, passwordHash }));
+        async function derivePassword(password, salt, iterations = PASSWORD_ITERATIONS) {
+            const encoder = new TextEncoder();
+            const key = await crypto.subtle.importKey('raw', encoder.encode(password), 'PBKDF2', false, ['deriveBits']);
+            const bits = await crypto.subtle.deriveBits({
+                name: 'PBKDF2',
+                hash: 'SHA-256',
+                salt: Uint8Array.from(atob(salt), char => char.charCodeAt(0)),
+                iterations
+            }, key, 256);
+            return bytesToBase64(new Uint8Array(bits));
+        }
+
+        async function createAdminCreds(username, password) {
+            const salt = bytesToBase64(crypto.getRandomValues(new Uint8Array(16)));
+            return {
+                username,
+                algorithm: 'PBKDF2-SHA-256',
+                iterations: PASSWORD_ITERATIONS,
+                salt,
+                passwordHash: await derivePassword(password, salt)
+            };
+        }
+
+        async function verifyPassword(password, creds) {
+            if (creds.algorithm === 'PBKDF2-SHA-256' && creds.salt && creds.iterations) {
+                return creds.passwordHash === await derivePassword(password, creds.salt, creds.iterations);
+            }
+            return creds.passwordHash === await hashPassword(password);
+        }
+
+        function getAdminCreds() {
+            return safeJsonParse(localStorage.getItem('admin_creds'));
+        }
+        function getCloudAdminCreds() {
+            return safeJsonParse(localStorage.getItem('cloud_admin_creds'));
+        }
+
+        function setAdminCreds(creds) {
+            localStorage.setItem('admin_creds', JSON.stringify(creds));
         }
 
         function updateModeUI() {
@@ -824,21 +902,23 @@
             document.body.classList.toggle('visitor-mode', !isAdmin);
         }
 
-        function openLoginModal() {
-            const creds = getAdminCreds();
-            if (!creds) {
-                const cloudCreds = getCloudAdminCreds();
-                if (cloudCreds) {
-                    localStorage.setItem('admin_creds', JSON.stringify(cloudCreds));
-                } else {
-                    fetch(RAW_DATA_URL + '?_=' + Date.now()).then(r => r.ok && r.json()).then(data => {
-                        if (data && data.adminUsername && data.adminHash) {
-                            localStorage.setItem('cloud_admin_creds', JSON.stringify({ username: data.adminUsername, passwordHash: data.adminHash }));
-                            localStorage.setItem('admin_creds', JSON.stringify({ username: data.adminUsername, passwordHash: data.adminHash }));
-                        }
-                    }).catch(() => {});
-                }
+        let cloudCredsPromise = null;
+        function ensureCloudCredsLoaded() {
+            if (getAdminCreds() || getCloudAdminCreds()) return Promise.resolve();
+            if (!cloudCredsPromise) {
+                cloudCredsPromise = fetch(RAW_DATA_URL + '?_=' + Date.now())
+                    .then(response => response.ok ? response.json() : null)
+                    .then(data => {
+                        if (data) syncAdminCredsFromCloud(data);
+                    })
+                    .catch(error => console.warn('无法读取云端管理员信息:', error))
+                    .finally(() => { cloudCredsPromise = null; });
             }
+            return cloudCredsPromise;
+        }
+
+        function openLoginModal() {
+            ensureCloudCredsLoaded();
             document.getElementById('loginPassword').value = '';
             document.getElementById('setupPassword').value = '';
             document.getElementById('setupPasswordConfirm').value = '';
@@ -879,13 +959,14 @@
         }
 
         async function handleSetup() {
+            await ensureCloudCredsLoaded();
             const username = document.getElementById('suName').value.trim();
             const password = document.getElementById('setupPassword').value;
             const confirm = document.getElementById('setupPasswordConfirm').value;
             const errorEl = document.getElementById('setupError');
             const warningEl = document.getElementById('setupCloudWarning');
             if (!username) { errorEl.textContent = '请输入用户名'; errorEl.style.display = ''; return; }
-            if (password.length < 6) { errorEl.textContent = '密码至少 6 位'; errorEl.style.display = ''; return; }
+            if (password.length < 8) { errorEl.textContent = '密码至少 8 位'; errorEl.style.display = ''; return; }
             if (password !== confirm) { errorEl.textContent = '两次密码不一致'; errorEl.style.display = ''; return; }
             const cloudCreds = getCloudAdminCreds();
             if (cloudCreds && !window._confirmCloudOverride) {
@@ -896,8 +977,8 @@
                 return;
             }
             window._confirmCloudOverride = false;
-            const hash = await hashPassword(password);
-            setAdminCreds(username, hash);
+            const creds = await createAdminCreds(username, password);
+            setAdminCreds(creds);
             localStorage.removeItem('cloud_admin_creds');
             isAdmin = true;
             localStorage.setItem('admin_logged_in', 'true');
@@ -912,13 +993,18 @@
         }
 
         async function handleLogin() {
+            await ensureCloudCredsLoaded();
             const username = document.getElementById('loginUsername').value.trim();
             const password = document.getElementById('loginPassword').value;
             const creds = getAdminCreds() || getCloudAdminCreds();
             const errorEl = document.getElementById('loginError');
             if (!creds) { errorEl.textContent = '未找到管理员账号'; errorEl.style.display = ''; return; }
-            const hash = await hashPassword(password);
-            if (creds.username === username && creds.passwordHash === hash) {
+            const passwordMatches = creds.username === username && await verifyPassword(password, creds);
+            if (passwordMatches) {
+                if (!creds.algorithm) {
+                    setAdminCreds(await createAdminCreds(username, password));
+                    localStorage.removeItem('cloud_admin_creds');
+                }
                 isAdmin = true;
                 localStorage.setItem('admin_logged_in', 'true');
                 updateModeUI();
@@ -943,11 +1029,12 @@
         }
 
         function syncAdminCredsFromCloud(data) {
-            if (data.adminUsername && data.adminHash && !getAdminCreds()) {
-                localStorage.setItem('cloud_admin_creds', JSON.stringify({
+            if (!getAdminCreds()) {
+                const cloudCreds = data.adminAuth || (data.adminUsername && data.adminHash ? {
                     username: data.adminUsername,
                     passwordHash: data.adminHash
-                }));
+                } : null);
+                if (cloudCreds) localStorage.setItem('cloud_admin_creds', JSON.stringify(cloudCreds));
             }
         }
 
@@ -959,7 +1046,10 @@
                 const data = await res.json();
                 syncAdminCredsFromCloud(data);
                 if (data.commands && data.commands.length > 0) {
-                    return data.commands.map(c => ({ ...c, favorite: c.favorite || false, copyCount: c.copyCount || 0 }));
+                    return {
+                        commands: normalizeCommands(data.commands),
+                        updatedAt: typeof data.updatedAt === 'string' ? data.updatedAt : ''
+                    };
                 }
                 return null;
             } catch (err) {
@@ -988,10 +1078,14 @@
                 updateSyncUI();
                 syncPull();
             } else {
-                fetchPublicData().then(remoteCommands => {
-                    if (remoteCommands && remoteCommands.length > 0 && remoteCommands.length !== commands.length) {
-                        commands = remoteCommands;
+                fetchPublicData().then(remoteData => {
+                    if (!remoteData) return;
+                    const localVersion = localStorage.getItem('publicDataUpdatedAt') || '';
+                    const shouldRefresh = !localVersion || !remoteData.updatedAt || remoteData.updatedAt !== localVersion;
+                    if (shouldRefresh) {
+                        commands = remoteData.commands;
                         saveToStorage();
+                        if (remoteData.updatedAt) localStorage.setItem('publicDataUpdatedAt', remoteData.updatedAt);
                         updateCategoryStructure();
                         saveCategoryStructure();
                         renderSubCategories();
@@ -1004,19 +1098,20 @@
         function loadCommands() {
             const stored = localStorage.getItem('commandManagerData');
             if (stored) {
-                const storedCommands = JSON.parse(stored);
-                const hasValidStructure = storedCommands.length > 0 && 
-                    storedCommands[0].mainCategory && storedCommands[0].subCategory;
-                if (hasValidStructure) {
-                    commands = storedCommands;
-                    commands.forEach(cmd => {
-                        if (cmd.favorite === undefined) cmd.favorite = false;
-                        if (cmd.copyCount === undefined) cmd.copyCount = 0;
-                    });
-                    updateCategoryStructure();
-                } else {
+                try {
+                    const storedCommands = normalizeCommands(JSON.parse(stored));
+                    if (storedCommands.length > 0) {
+                        commands = storedCommands;
+                        updateCategoryStructure();
+                    } else {
+                        throw new Error('本地命令为空');
+                    }
+                } catch (error) {
+                    console.warn('本地命令数据损坏，已回退到内置命令:', error);
+                    localStorage.setItem('commandManagerData_corrupt_backup', stored);
                     commands = defaultCommands.map(c => ({...c, favorite: false, copyCount: 0}));
                     saveToStorage();
+                    showToast('检测到本地数据损坏，已备份并恢复内置命令');
                 }
             } else {
                 commands = defaultCommands.map(c => ({...c, favorite: false, copyCount: 0}));
@@ -1042,7 +1137,18 @@
         function loadCategoryStructure() {
             const stored = localStorage.getItem('categoryStructure');
             if (stored) {
-                categoryStructure = JSON.parse(stored);
+                const parsed = safeJsonParse(stored);
+                if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
+                    categoryStructure = {};
+                    Object.entries(parsed).forEach(([mainCategory, subCategories]) => {
+                        if (Array.isArray(subCategories)) {
+                            categoryStructure[mainCategory] = [...new Set(subCategories.filter(sub => typeof sub === 'string' && sub.trim()))];
+                        }
+                    });
+                }
+                if (!categoryStructure || !Object.keys(categoryStructure).length) {
+                    categoryStructure = JSON.parse(JSON.stringify(defaultCategoryStructure));
+                }
                 // 确保每个分类的"其他"都在最后
                 Object.keys(categoryStructure).forEach(mainCat => {
                     const otherIndex = categoryStructure[mainCat].indexOf('其他');
@@ -1057,8 +1163,9 @@
             }
         }
 
-        function saveToStorage() {
+        function saveToStorage(markDirty = false) {
             localStorage.setItem('commandManagerData', JSON.stringify(commands));
+            if (markDirty) localStorage.setItem('sync_dirty', 'true');
         }
 
         // ===== GitHub 云同步 =====
@@ -1103,8 +1210,11 @@
             if (res.status === 404) return null;
             if (!res.ok) throw new Error(`HTTP ${res.status}`);
             const data = await res.json();
+            const content = JSON.parse(base64ToUtf8(data.content));
+            if (!content || typeof content !== 'object') throw new Error('云端数据格式不正确');
+            if (content.commands) content.commands = normalizeCommands(content.commands);
             return {
-                content: JSON.parse(base64ToUtf8(data.content)),
+                content,
                 sha: data.sha
             };
         }
@@ -1114,8 +1224,9 @@
             const payload = JSON.stringify({
                 commands,
                 updatedAt: new Date().toISOString(),
-                adminUsername: creds ? creds.username : undefined,
-                adminHash: creds ? creds.passwordHash : undefined
+                adminAuth: creds || undefined,
+                adminUsername: creds && !creds.algorithm ? creds.username : undefined,
+                adminHash: creds && !creds.algorithm ? creds.passwordHash : undefined
             });
             const body = {
                 message: `同步命令数据 [${new Date().toLocaleString('zh-CN')}]`,
@@ -1139,6 +1250,8 @@
                 try { details = (await res.json()).message || ''; } catch(e) {}
                 throw new Error(`HTTP ${res.status}${details ? ': ' + details : ''}`);
             }
+            const result = await res.json();
+            return result.content && result.content.sha ? result.content.sha : null;
         }
 
         function updateSyncUI() {
@@ -1160,6 +1273,9 @@
                 case 'error':
                     text.textContent = '同步失败';
                     break;
+                case 'conflict':
+                    text.textContent = '检测到冲突';
+                    break;
             }
         }
 
@@ -1173,7 +1289,7 @@
 
         async function syncPull() {
             const token = getGitHubToken();
-            if (!token) return;
+            if (!token) return false;
 
             syncStatus = 'syncing';
             updateSyncUI();
@@ -1181,70 +1297,97 @@
             try {
                 const result = await fetchGitHubFile(token);
                 if (result && result.content && result.content.commands) {
-                    const { commands: ghCommands, updatedAt } = result.content;
+                    const { commands: ghCommands } = result.content;
                     syncAdminCredsFromCloud(result.content);
                     if (ghCommands.length > 0) {
-                        const lastSyncAt = localStorage.getItem('lastSyncAt');
-                        if (!lastSyncAt || new Date(updatedAt) > new Date(lastSyncAt)) {
-                            commands = ghCommands.map(c => ({
-                                ...c,
-                                favorite: c.favorite || false,
-                                copyCount: c.copyCount || 0
-                            }));
-                            saveToStorage();
-                            updateCategoryStructure();
-                            saveCategoryStructure();
-                            renderSubCategories();
-                            filterCommands();
-                            showToast('☁️ 已同步云端数据');
+                        const baseSha = localStorage.getItem('lastSyncedSha');
+                        const hasLocalChanges = localStorage.getItem('sync_dirty') === 'true';
+                        if (hasLocalChanges) {
+                            if (!baseSha || baseSha !== result.sha) {
+                                localStorage.setItem('sync_conflict_remote_backup', JSON.stringify({
+                                    savedAt: new Date().toISOString(),
+                                    sha: result.sha,
+                                    content: result.content
+                                }));
+                                syncStatus = 'conflict';
+                                showToast('⚠️ 云端和本地都有修改，双方数据均已保留');
+                                updateSyncUI();
+                                return false;
+                            }
+                            // 云端仍是共同版本，本地更新更靠前；保留本地，等待随后推送。
+                            syncStatus = 'synced';
+                            updateSyncUI();
+                            return true;
                         }
+                        commands = ghCommands;
+                        saveToStorage();
+                        localStorage.setItem('lastSyncedSha', result.sha);
+                        localStorage.removeItem('sync_dirty');
+                        updateCategoryStructure();
+                        saveCategoryStructure();
+                        renderSubCategories();
+                        filterCommands();
+                        showToast('☁️ 已同步云端数据');
                         syncStatus = 'synced';
                         localStorage.setItem('lastSyncAt', new Date().toISOString());
                     } else {
-                        syncStatus = 'synced';
+                        syncStatus = 'error';
+                        showToast('⚠️ 云端命令为空，已保留本地数据');
+                        updateSyncUI();
+                        return false;
                     }
                 } else {
                     syncStatus = 'disconnected';
+                    localStorage.removeItem('lastSyncedSha');
                 }
             } catch (err) {
                 console.error('Sync pull error:', err);
                 syncStatus = 'error';
                 showToast('☁️ 同步拉取失败: ' + friendlySyncError(err));
+                updateSyncUI();
+                return false;
             }
             updateSyncUI();
+            return true;
         }
 
         let _syncing = false;
         let _pendingSync = false;
-        async function syncPush() {
+        async function syncPush(force = false) {
             const token = getGitHubToken();
-            if (!token) return;
-            if (_syncing) { _pendingSync = true; return; }
+            if (!token) return false;
+            if (_syncing) { _pendingSync = true; return false; }
             _syncing = true;
 
             syncStatus = 'syncing';
             updateSyncUI();
 
             try {
-                for (let retry = 0; retry < 3; retry++) {
-                    const current = await fetchGitHubFile(token);
-                    const sha = current && current.sha ? current.sha : undefined;
-                    try {
-                        await pushGitHubFile(commands, token, sha);
-                        break;
-                    } catch (e) {
-                        if (retry < 2 && e.message.includes('409')) {
-                            continue;
-                        }
-                        throw e;
-                    }
+                const current = await fetchGitHubFile(token);
+                const currentSha = current && current.sha ? current.sha : undefined;
+                const baseSha = localStorage.getItem('lastSyncedSha');
+                const hasLocalChanges = localStorage.getItem('sync_dirty') === 'true';
+                if (!force && currentSha && hasLocalChanges && (!baseSha || baseSha !== currentSha)) {
+                    localStorage.setItem('sync_conflict_remote_backup', JSON.stringify({
+                        savedAt: new Date().toISOString(),
+                        sha: currentSha,
+                        content: current.content
+                    }));
+                    syncStatus = 'conflict';
+                    showToast('⚠️ 同步冲突：未覆盖云端数据');
+                    updateSyncUI();
+                    return false;
                 }
+                const newSha = await pushGitHubFile(commands, token, currentSha);
+                if (newSha) localStorage.setItem('lastSyncedSha', newSha);
+                localStorage.removeItem('sync_dirty');
                 syncStatus = 'synced';
                 localStorage.setItem('lastSyncAt', new Date().toISOString());
             } catch (err) {
                 console.error('Sync push error:', err);
                 syncStatus = 'error';
                 showToast('☁️ 同步推送失败: ' + friendlySyncError(err));
+                return false;
             } finally {
                 _syncing = false;
                 if (_pendingSync) {
@@ -1254,30 +1397,40 @@
                 }
             }
             updateSyncUI();
+            return true;
         }
 
         async function manualSync() {
             const token = getGitHubToken();
             if (!token) { showToast('☁️ 请先配置同步 Token'); openSyncModal(); return; }
             showToast('☁️ 开始同步…');
-            await syncPull();
-            await syncPush();
+            const pulled = await syncPull();
+            if (!pulled && syncStatus === 'conflict') {
+                const overwrite = confirm('检测到本地和云端都有修改，云端版本已备份到浏览器。\n\n取消：保留双方数据，不执行覆盖（推荐）\n确定：用当前本地数据覆盖云端');
+                if (overwrite) await syncPush(true);
+                return;
+            }
+            if (pulled) await syncPush();
         }
 
         async function testGitHubConnection() {
             const token = document.getElementById('tokenInput').value.trim();
             const resultEl = document.getElementById('syncTestResult');
-            if (!token) { resultEl.innerHTML = '<span style="color:#f59e0b">请输入 Token</span>'; return; }
-            resultEl.innerHTML = '<span style="color:#94a3b8">测试中…</span>';
+            const setResult = (message, color) => {
+                resultEl.textContent = message;
+                resultEl.style.color = color;
+            };
+            if (!token) { setResult('请输入 Token', '#f59e0b'); return; }
+            setResult('测试中…', '#94a3b8');
             try {
                 const result = await fetchGitHubFile(token);
                 if (result) {
-                    resultEl.innerHTML = `<span style="color:#10b981">✅ 连接成功！远程仓库有 ${result.content.commands.length} 条命令</span>`;
+                    setResult(`✅ 连接成功！远程仓库有 ${result.content.commands.length} 条命令`, '#10b981');
                 } else {
-                    resultEl.innerHTML = '<span style="color:#10b981">✅ 连接成功！首次同步时将自动创建数据文件</span>';
+                    setResult('✅ 连接成功！首次同步时将自动创建数据文件', '#10b981');
                 }
             } catch (err) {
-                resultEl.innerHTML = `<span style="color:#ef4444">❌ ${friendlySyncError(err)}</span>`;
+                setResult(`❌ ${friendlySyncError(err)}`, '#ef4444');
             }
         }
 
@@ -1287,14 +1440,14 @@
             saveGitHubToken(token);
             closeSyncModal();
             showToast('同步配置已保存');
-            syncPull();
+            manualSync();
         }
 
         function clearSyncConfig() {
             if (!confirm('确定清除同步配置？')) return;
             clearGitHubToken();
             document.getElementById('tokenInput').value = '';
-            document.getElementById('syncTestResult').innerHTML = '';
+            document.getElementById('syncTestResult').textContent = '';
             closeSyncModal();
             showToast('已清除同步配置');
         }
@@ -1302,7 +1455,8 @@
         function openSyncModal() {
             const token = getGitHubToken();
             document.getElementById('tokenInput').value = token;
-            document.getElementById('syncTestResult').innerHTML = '';
+            document.getElementById('syncTestResult').textContent = '';
+            document.getElementById('syncTestResult').style.color = '';
             document.getElementById('syncModal').classList.add('active');
         }
 
@@ -1319,7 +1473,8 @@
             const cmd = commands.find(c => c.id === id);
             if (cmd) {
                 cmd.favorite = !cmd.favorite;
-                saveToStorage();
+                saveToStorage(isAdmin);
+                if (isAdmin) syncPush();
                 filterCommands();
             }
         }
@@ -1496,64 +1651,132 @@
                return;
            }
 
-             function hl(text) {
-                if (!searchTerm) return escapeHtml(text);
-                let escaped = escapeHtml(text);
-                const terms = searchTerm.split(/\s+/).filter(t => t);
-                terms.forEach(term => {
-                    const escapedTerm = term.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-                    const regex = new RegExp(`(${escapedTerm})`, 'gi');
-                    escaped = escaped.replace(regex, '<mark class="highlight">$1</mark>');
-                });
-                return escaped;
-            }
+            grid.replaceChildren();
+            const expandableDescriptions = [];
+            pageItems.forEach(cmd => {
+                const card = document.createElement('div');
+                card.className = 'command-card' + (cmd.favorite ? ' favorited' : '');
+                card.dataset.id = cmd.id;
 
-            grid.innerHTML = pageItems.map(cmd => `
-                <div class="command-card${cmd.favorite ? ' favorited' : ''}" data-id="${cmd.id}">
-                    <div class="card-row">
-                        <input type="checkbox" class="card-checkbox admin-only" data-id="${cmd.id}" onchange="updateBatchBar()">
-                        <div class="card-body">
-                    <div class="command-header">
-                        <div>
-                            <span class="category-badge ${getBadgeClass(cmd.mainCategory)}">${cmd.mainCategory}</span>
-                            <span class="sub-badge">${cmd.subCategory}</span>
-                        </div>
-                        <button class="btn-star${cmd.favorite ? ' favorited' : ''}" onclick="event.stopPropagation();toggleFavorite('${cmd.id}')" title="${cmd.favorite ? '取消收藏' : '收藏'}">
-                            ${cmd.favorite ? '⭐' : '☆'}
-                        </button>
-                    </div>
-                     <div class="command-code" onclick="copyCommand('${cmd.id}', this)" title="点击复制命令">${hl(cmd.command)}</div>
-                   <div class="description-wrapper">
-                        <p class="command-description" id="desc-${cmd.id}">${hl(cmd.description)}</p>
-                       <button class="description-expand-btn" onclick="toggleDescription('${cmd.id}')" id="expand-btn-${cmd.id}" style="display:none">展开</button>
-                   </div>
-                    <div class="tags">
-                         ${cmd.tags.map(tag => `<span class="tag">${hl(tag)}</span>`).join('')}
-                         <span class="tag" style="background:#1e3a8a;color:#93c5fd" title="复制次数">📋 ${cmd.copyCount || 0}</span>
-                    </div>
-                    <div class="card-actions">
-                         <button class="btn btn-copy" onclick="copyCommand('${cmd.id}', this)">📋 复制</button>
-                        <button class="btn btn-edit admin-only" onclick="editCommand('${cmd.id}')">✏️ 编辑</button>
-                        <button class="btn btn-delete admin-only" onclick="deleteCommand('${cmd.id}')">🗑️ 删除</button>
-                    </div>
-                        </div>
-                    </div>
-                </div>
-           `).join('');
+                const row = document.createElement('div');
+                row.className = 'card-row';
+                const checkbox = document.createElement('input');
+                checkbox.type = 'checkbox';
+                checkbox.className = 'card-checkbox admin-only';
+                checkbox.dataset.id = cmd.id;
+                checkbox.addEventListener('change', updateBatchBar);
+
+                const body = document.createElement('div');
+                body.className = 'card-body';
+                const header = document.createElement('div');
+                header.className = 'command-header';
+                const badges = document.createElement('div');
+                const mainBadge = document.createElement('span');
+                mainBadge.className = 'category-badge ' + getBadgeClass(cmd.mainCategory);
+                mainBadge.textContent = cmd.mainCategory;
+                const subBadge = document.createElement('span');
+                subBadge.className = 'sub-badge';
+                subBadge.textContent = cmd.subCategory;
+                badges.append(mainBadge, subBadge);
+
+                const star = document.createElement('button');
+                star.type = 'button';
+                star.className = 'btn-star' + (cmd.favorite ? ' favorited' : '');
+                star.title = cmd.favorite ? '取消收藏' : '收藏';
+                star.textContent = cmd.favorite ? '⭐' : '☆';
+                star.addEventListener('click', event => {
+                    event.stopPropagation();
+                    toggleFavorite(cmd.id);
+                });
+                header.append(badges, star);
+
+                const commandCode = document.createElement('div');
+                commandCode.className = 'command-code';
+                commandCode.title = '点击复制命令';
+                appendHighlighted(commandCode, cmd.command, searchTerm);
+                commandCode.addEventListener('click', () => copyCommand(cmd.id, commandCode));
+
+                const descriptionWrapper = document.createElement('div');
+                descriptionWrapper.className = 'description-wrapper';
+                const description = document.createElement('p');
+                description.className = 'command-description';
+                appendHighlighted(description, cmd.description, searchTerm);
+                const expandButton = document.createElement('button');
+                expandButton.type = 'button';
+                expandButton.className = 'description-expand-btn';
+                expandButton.style.display = 'none';
+                expandButton.textContent = '展开';
+                expandButton.addEventListener('click', () => toggleDescription(description, expandButton));
+                descriptionWrapper.append(description, expandButton);
+                expandableDescriptions.push([description, expandButton]);
+
+                const tags = document.createElement('div');
+                tags.className = 'tags';
+                cmd.tags.forEach(tagText => {
+                    const tag = document.createElement('span');
+                    tag.className = 'tag';
+                    appendHighlighted(tag, tagText, searchTerm);
+                    tags.appendChild(tag);
+                });
+                const copyCount = document.createElement('span');
+                copyCount.className = 'tag';
+                copyCount.style.cssText = 'background:#1e3a8a;color:#93c5fd';
+                copyCount.title = '复制次数';
+                copyCount.textContent = `📋 ${cmd.copyCount || 0}`;
+                tags.appendChild(copyCount);
+
+                const actions = document.createElement('div');
+                actions.className = 'card-actions';
+                const copyButton = document.createElement('button');
+                copyButton.type = 'button';
+                copyButton.className = 'btn btn-copy';
+                copyButton.textContent = '📋 复制';
+                copyButton.addEventListener('click', () => copyCommand(cmd.id, copyButton));
+                const editButton = document.createElement('button');
+                editButton.type = 'button';
+                editButton.className = 'btn btn-edit admin-only';
+                editButton.textContent = '✏️ 编辑';
+                editButton.addEventListener('click', () => editCommand(cmd.id));
+                const deleteButton = document.createElement('button');
+                deleteButton.type = 'button';
+                deleteButton.className = 'btn btn-delete admin-only';
+                deleteButton.textContent = '🗑️ 删除';
+                deleteButton.addEventListener('click', () => deleteCommand(cmd.id));
+                actions.append(copyButton, editButton, deleteButton);
+
+                body.append(header, commandCode, descriptionWrapper, tags, actions);
+                row.append(checkbox, body);
+                card.appendChild(row);
+                grid.appendChild(card);
+            });
             renderPagination(total);
-            // Only show expand buttons for descriptions that overflow
-             pageItems.forEach(cmd => {
-                 const desc = document.getElementById('desc-' + cmd.id);
-                 const btn = document.getElementById('expand-btn-' + cmd.id);
-                 if (desc && btn && desc.scrollHeight > desc.clientHeight) {
-                     btn.style.display = '';
-                 }
-             });
+            expandableDescriptions.forEach(([description, button]) => {
+                if (description.scrollHeight > description.clientHeight) button.style.display = '';
+            });
         }
 
-        function toggleDescription(id) {
-            const desc = document.getElementById('desc-' + id);
-            const btn = document.getElementById('expand-btn-' + id);
+        function appendHighlighted(element, text, searchTerm) {
+            const value = String(text);
+            const terms = searchTerm.split(/\s+/).filter(Boolean);
+            if (!terms.length) {
+                element.textContent = value;
+                return;
+            }
+            const escapedTerms = terms.map(term => term.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'));
+            const regex = new RegExp(`(${escapedTerms.join('|')})`, 'gi');
+            value.split(regex).filter(part => part !== '').forEach(part => {
+                if (terms.some(term => part.toLowerCase() === term.toLowerCase())) {
+                    const mark = document.createElement('mark');
+                    mark.className = 'highlight';
+                    mark.textContent = part;
+                    element.appendChild(mark);
+                } else {
+                    element.appendChild(document.createTextNode(part));
+                }
+            });
+        }
+
+        function toggleDescription(desc, btn) {
             if (desc.classList.contains('expanded')) {
                 desc.classList.remove('expanded');
                 btn.textContent = '展开';
@@ -1561,12 +1784,6 @@
                 desc.classList.add('expanded');
                 btn.textContent = '收起';
             }
-        }
-
-        function escapeHtml(text) {
-            const div = document.createElement('div');
-            div.textContent = text;
-            return div.innerHTML;
         }
 
         function updateSubCategoriesOptions(mainCat) {
@@ -1677,12 +1894,14 @@
                     mainCategory,
                     subCategory,
                     tags,
+                    favorite: false,
+                    copyCount: 0,
                     createdAt: new Date().toISOString(),
                     updatedAt: new Date().toISOString()
                 });
             }
             
-            saveToStorage();
+            saveToStorage(true);
             syncPush();
             filterCommands();
             closeModal();
@@ -1699,12 +1918,12 @@
             if (!confirm('确定删除此命令？')) return;
             const deleted = commands[index];
             commands.splice(index, 1);
-            saveToStorage();
+            saveToStorage(true);
             syncPush();
             filterCommands();
             showUndoToast('命令已删除', () => {
                 commands.splice(index, 0, deleted);
-                saveToStorage();
+                saveToStorage(true);
                 syncPush();
                 filterCommands();
                 showToast('已恢复命令');
@@ -1872,7 +2091,7 @@
             if (!ids.length) return;
             if (!confirm(`确定删除选中的 ${ids.length} 条命令吗？`)) return;
             commands = commands.filter(c => !ids.includes(c.id));
-            saveToStorage();
+            saveToStorage(true);
             syncPush();
             filterCommands();
             showToast(`已删除 ${ids.length} 条命令`);
@@ -1933,22 +2152,27 @@
             const reader = new FileReader();
             reader.onload = function(e) {
                 try {
-                    const imported = JSON.parse(e.target.result);
-                    if (!Array.isArray(imported)) throw new Error('Invalid format');
-                    const count = imported.length;
+                    const imported = normalizeCommands(JSON.parse(e.target.result));
+                    let count = 0;
                     imported.forEach(newCmd => {
                         if (!commands.find(c => c.id === newCmd.id)) {
                             commands.push(newCmd);
+                            count++;
                         }
                     });
-                    saveToStorage();
+                    if (!count) {
+                        showToast('没有可导入的新命令');
+                        return;
+                    }
+                    saveToStorage(true);
                     syncPush();
                     updateCategoryStructure();
                     saveCategoryStructure();
                     filterCommands();
                     showToast(`已导入 ${count} 条命令！`);
                 } catch (err) {
-                    showToast('导入失败：文件格式不正确');
+                    console.warn('导入失败:', err);
+                    showToast('导入失败：' + err.message);
                 }
             };
             reader.readAsText(file);

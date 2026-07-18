@@ -77,7 +77,7 @@
 
 | 你能在 F12 → Application → Local Storage 看到 | 实际风险 |
 |------|----------|
-| `admin_creds` = `{ username, passwordHash }` | 哈希不可逆，无法还原密码；但直接在 DevTools 设 `admin_logged_in = "true"` 即可绕过登录 |
+| `admin_creds` = `{ username, algorithm, salt, passwordHash }` | 新账号使用 PBKDF2 加盐派生；哈希仍可能被离线猜测，且可通过修改 `admin_logged_in` 绕过前端登录 |
 | `github_token` | 持有 Token 可读写你的 GitHub 仓库 `data/data.json` |
 | `commandManagerData` | 全部命令数据，明文可见 |
 
