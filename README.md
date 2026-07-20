@@ -9,7 +9,7 @@
 | 本机管理版 | `admin/index.html` | 添加、编辑、删除、导入和同步命令 |
 | 公开只读版 | 仓库根目录 `index.html` | 搜索、筛选、复制和导出公开命令 |
 
-GitHub Pages 继续按现有设置从 `main / root` 发布。即使有人直接访问公开的 `/admin/` 路径，管理版也会停止初始化，不读取数据、不连接 GitHub API，也不显示 Token 输入界面。
+GitHub Pages 使用 GitHub Actions 发布一个只包含只读页面和公开数据的构建产物，`admin/` 不会进入部署包。作为额外保护，即使管理页被放到其他非本机环境，它也会停止初始化，不读取数据、不连接 GitHub API。
 
 ## 功能特性
 
@@ -45,7 +45,17 @@ http://127.0.0.1:8787/admin/
 
 ## 公开只读站点
 
-公开站点继续使用仓库现有的 **Deploy from a branch → main → / (root)** 设置，不需要修改 GitHub Pages 配置。公开地址保持为：
+公开站点通过 `.github/workflows/deploy-pages.yml` 部署。Pages 的发布来源应设置为 **GitHub Actions**，工作流只打包以下文件：
+
+```text
+index.html
+app.js
+styles.css
+.nojekyll
+data/data.json
+```
+
+公开地址保持为：
 
 ```text
 https://ironmole666.github.io/linux-command/
@@ -81,12 +91,12 @@ https://ironmole666.github.io/linux-command/
 ### 工作原理
 
 ```
-访客: GitHub Pages → data/data.json（只读，无认证）
+访客: GitHub Pages → 只读部署产物 data/data.json（只读，无认证）
 管理员: localhost → localStorage → GitHub API（读写，需要 Token）
 
-              GitHub Pages ← GitHub仓库 data/data.json
-                                      ↑
-                           本机管理员写入/读取
+              GitHub Pages ← GitHub Actions ← GitHub仓库 data/data.json
+                                                        ↑
+                                             本机管理员写入/读取
 ```
 
 ## 分类结构

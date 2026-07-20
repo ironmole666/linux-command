@@ -4,7 +4,8 @@
 
 ### 🔒 公开只读部署
 - 仓库根目录改为公开只读站点，不包含登录、Token 或 GitHub API 写入逻辑
-- 管理版移至 `admin/`，仅允许在 localhost 初始化
+- GitHub Actions 只部署只读页面和公开数据，排除 `admin/`
+- 管理版移至 `admin/`，并且仅允许在 localhost 初始化
 - 管理版改为本机 `localhost` 使用，Token 与公开站点按来源隔离
 - 云同步数据不再写入管理员用户名或密码哈希
 - 公开站点对高风险命令增加警告和复制前确认

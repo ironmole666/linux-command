@@ -1,0 +1,50 @@
+name: Deploy read-only site to GitHub Pages
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - index.html
+      - app.js
+      - styles.css
+      - .nojekyll
+      - data/data.json
+      - .github/workflows/deploy-pages.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  deploy:
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Prepare read-only artifact
+        run: |
+          mkdir -p _site/data
+          cp index.html app.js styles.css .nojekyll _site/
+          cp data/data.json _site/data/data.json
+
+      - name: Configure Pages
+        uses: actions/configure-pages@v5
+
+      - name: Upload read-only site
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: _site
+
+      - name: Deploy to Pages
+        id: deployment
+        uses: actions/deploy-pages@v4
