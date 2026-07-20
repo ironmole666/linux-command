@@ -6,10 +6,10 @@
 
 | 版本 | 入口 | 用途 |
 |------|------|------|
-| 本机管理版 | 仓库根目录 `index.html` | 添加、编辑、删除、导入和同步命令 |
-| 公开只读版 | `public/`，由 GitHub Actions 部署 | 搜索、筛选、复制和导出公开命令 |
+| 本机管理版 | `admin/index.html` | 添加、编辑、删除、导入和同步命令 |
+| 公开只读版 | 仓库根目录 `index.html` | 搜索、筛选、复制和导出公开命令 |
 
-GitHub Pages 部署产物只包含 `public/` 和构建时复制的 `data/data.json`，不会包含管理版页面。
+GitHub Pages 继续按现有设置从 `main / root` 发布。即使有人直接访问公开的 `/admin/` 路径，管理版也会停止初始化，不读取数据、不连接 GitHub API，也不显示 Token 输入界面。
 
 ## 功能特性
 
@@ -36,7 +36,7 @@ python3 -m http.server 8787
 然后访问：
 
 ```text
-http://127.0.0.1:8787/
+http://127.0.0.1:8787/admin/
 ```
 
 不要直接使用 `file://` 打开管理页。固定使用同一个地址和端口，可让浏览器继续使用原有的本地管理员账号和 Token 配置。
@@ -45,9 +45,7 @@ http://127.0.0.1:8787/
 
 ## 公开只读站点
 
-公开站点由 `.github/workflows/deploy-pages.yml` 自动部署。每次 `main` 分支中的 `public/` 或 `data/data.json` 变化时，GitHub Actions 都会重新发布只读站点。
-
-首次启用时，在仓库 **Settings → Pages → Build and deployment → Source** 中选择 **GitHub Actions**。公开地址保持为：
+公开站点继续使用仓库现有的 **Deploy from a branch → main → / (root)** 设置，不需要修改 GitHub Pages 配置。公开地址保持为：
 
 ```text
 https://ironmole666.github.io/linux-command/
@@ -68,7 +66,7 @@ https://ironmole666.github.io/linux-command/
 3. 填写 **Token name**（如 `命令管理器`），**Repository access** 选 `Only select repositories` → 选中 `ironmole666/linux-command`
 4. **Permissions** 展开 **Contents** → 选 **Read and write**
 5. 生成并复制 Token
-6. 打开本机管理页 `http://127.0.0.1:8787/`，点击 `🔐 登录管理` → 创建本地管理员账号 → 登录后点击统计栏的 `未连接` 状态（或顶部 `☁️ 同步` 按钮）
+6. 打开本机管理页 `http://127.0.0.1:8787/admin/`，点击 `🔐 登录管理` → 创建本地管理员账号 → 登录后点击统计栏的 `未连接` 状态（或顶部 `☁️ 同步` 按钮）
 7. 粘贴 Token → 点击 **测试连接** → **保存并同步**
 
 ### 使用说明
@@ -76,19 +74,19 @@ https://ironmole666.github.io/linux-command/
 - **公开站点**：只能浏览、搜索、复制和导出，没有登录入口和 GitHub API 写入代码
 - **本机管理版**：点击 `🔐 登录管理` → 输入用户名和密码 → 进入管理界面
 - **增删改命令**：自动推送到 GitHub（状态栏显示 `同步中…` → `已同步`）
-- **页面加载**：本机管理版从 GitHub API 拉取；公开站点读取部署产物中的只读 JSON
+- **页面加载**：本机管理版从 GitHub API 拉取；公开站点读取同一仓库中的只读 JSON
 - **手动同步**：点击顶部 `☁️ 同步` 按钮或状态栏的 `⟳` 图标
 - **每台管理设备**需要创建本地管理员账号并配置一次 Token；管理员凭据不再上传到公开仓库
 
 ### 工作原理
 
 ```
-访客: GitHub Pages → 部署产物 data/data.json（只读，无认证）
+访客: GitHub Pages → data/data.json（只读，无认证）
 管理员: localhost → localStorage → GitHub API（读写，需要 Token）
 
-              GitHub Pages ← GitHub Actions ← GitHub仓库 data/data.json
-                                                        ↑
-                                             本机管理员写入/读取
+              GitHub Pages ← GitHub仓库 data/data.json
+                                      ↑
+                           本机管理员写入/读取
 ```
 
 ## 分类结构

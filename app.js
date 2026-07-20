@@ -1,9 +1,7 @@
 'use strict';
 
 const PAGE_SIZE = 30;
-const DATA_URL = ['127.0.0.1', 'localhost'].includes(window.location.hostname)
-    ? '../data/data.json'
-    : './data/data.json';
+const DATA_URL = './data/data.json';
 const CATEGORY_ICONS = {
     Linux: '🐧',
     Windows: '🪟',
