@@ -1220,13 +1220,9 @@
         }
 
         async function pushGitHubFile(commands, token, sha) {
-            const creds = getAdminCreds();
             const payload = JSON.stringify({
                 commands,
-                updatedAt: new Date().toISOString(),
-                adminAuth: creds || undefined,
-                adminUsername: creds && !creds.algorithm ? creds.username : undefined,
-                adminHash: creds && !creds.algorithm ? creds.passwordHash : undefined
+                updatedAt: new Date().toISOString()
             });
             const body = {
                 message: `同步命令数据 [${new Date().toLocaleString('zh-CN')}]`,
